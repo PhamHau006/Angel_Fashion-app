@@ -1,0 +1,16 @@
+
+{
+  "appId": "app.lovable.4c4184f2d9b14a26a7012b3f3f987857",
+  "appName": "Angel Fashion",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "url": "https://4c4184f2-d9b1-4a26-a701-2b3f3f987857.lovableproject.com?forceHideBadge=true",
+    "cleartext": true
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
+}
