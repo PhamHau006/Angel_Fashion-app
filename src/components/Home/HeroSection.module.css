@@ -1,0 +1,46 @@
+@import url('https://fonts.googleapis.com/css2?family=Allura&display=swap');
+
+svg {
+  max-width: 700px;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  filter: brightness(1.2); /* Tăng độ sáng tổng thể của logo */
+}
+
+.angelText {
+  fill: url(#start);
+  stroke: #ffffff; /* Viền trắng để nổi bật trên nền gradient */
+  stroke-width: 2; /* Tăng độ dày viền */
+  filter: drop-shadow(3px 3px 6px rgba(255, 255, 255, 0.8)); /* Bóng sáng trắng */
+  font-family: 'Allura', cursive;
+  font-weight: 400;
+  font-size: 140px;
+  letter-spacing: 6px;
+  paint-order: stroke fill;
+  user-select: none;
+}
+
+.wing {
+  fill: url(#start);
+  opacity: 0.85; /* Tăng độ đậm để cánh nổi bật hơn */
+  filter: drop-shadow(2px 2px 5px rgba(255, 255, 255, 0.5)); /* Bóng sáng nhẹ */
+  transform-origin: center;
+  animation: gentleFloat 4.5s ease-in-out infinite;
+  shape-rendering: geometricPrecision;
+}
+
+.wingRight {
+  animation-delay: 0.25s;
+}
+
+@keyframes gentleFloat {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 0.85;
+  }
+  50% {
+    transform: translateY(-7px) rotate(4deg);
+    opacity: 1;
+  }
+}

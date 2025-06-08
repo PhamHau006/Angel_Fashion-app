@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MobileLayout } from '../Layout/MobileLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -14,15 +13,69 @@ import {
   LogOut,
   ChevronRight,
   User,
-  CreditCard
+  CreditCard,
+  LogIn
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+
+const API_URL = 'https://localhost:7217'; // Thay bằng URL API của bạn
 
 export const SettingsPage = () => {
   const navigate = useNavigate();
   const [darkMode, setDarkMode] = useState(false);
   const [notifications, setNotifications] = useState(true);
   const [emailNotifications, setEmailNotifications] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem('accessToken')); // Kiểm tra token
+
+  useEffect(() => {
+    // Cập nhật trạng thái đăng nhập nếu token thay đổi
+    const checkLoginStatus = () => {
+      setIsLoggedIn(!!localStorage.getItem('accessToken'));
+    };
+    checkLoginStatus();
+    window.addEventListener('storage', checkLoginStatus);
+    return () => window.removeEventListener('storage', checkLoginStatus);
+  }, []);
+
+  const handleLogout = async () => {
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (!refreshToken) {
+      // Không có token, chỉ cần chuyển hướng đến login
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      setIsLoggedIn(false);
+      navigate('/login');
+      return;
+    }
+
+    try {
+      // Gọi API để đăng xuất
+      const response = await fetch(`${API_URL}/api/Account/Logout`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(refreshToken),
+      });
+      const data = await response.json();
+      if (data.success) {
+        toast.success('Đăng xuất thành công', { description: 'Thành công' });
+      } else {
+        toast.error(data.message || 'Đăng xuất thất bại', { description: 'Lỗi' });
+      }
+    } catch (error) {
+      toast.error('Lỗi khi đăng xuất', { description: 'Lỗi' });
+    } finally {
+      // Xóa token khỏi localStorage
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      setIsLoggedIn(false);
+      navigate('/login');
+    }
+  };
+
+  const handleLoginRedirect = () => {
+    navigate('/login');
+  };
 
   const settingsGroups = [
     {
@@ -94,11 +147,6 @@ export const SettingsPage = () => {
     },
   ];
 
-  const handleLogout = () => {
-    // TODO: Implement logout logic
-    navigate('/login');
-  };
-
   return (
     <MobileLayout>
       <div className="pb-20">
@@ -151,17 +199,26 @@ export const SettingsPage = () => {
           ))}
         </div>
 
-        {/* Logout Button */}
+        {/* Login/Logout Button */}
         <div className="p-4">
           <Card>
             <CardContent className="p-4">
               <Button
-                variant="destructive"
+                variant={isLoggedIn ? "destructive" : "default"}
                 className="w-full"
-                onClick={handleLogout}
+                onClick={isLoggedIn ? handleLogout : handleLoginRedirect}
               >
-                <LogOut size={20} className="mr-2" />
-                Đăng xuất
+                {isLoggedIn ? (
+                  <>
+                    <LogOut size={20} className="mr-2" />
+                    Đăng xuất
+                  </>
+                ) : (
+                  <>
+                    <LogIn size={20} className="mr-2" />
+                    Đăng nhập
+                  </>
+                )}
               </Button>
             </CardContent>
           </Card>

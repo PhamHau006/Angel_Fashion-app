@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -6,6 +5,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { HomePage } from "./components/Home/HomePage";
 import { LoginForm } from "./components/Auth/LoginForm";
+import { RegisterForm } from "./components/Auth/RegisterForm";
+import { ForgotPasswordForm } from "./components/Auth/ForgotPasswordForm";
+import { ResetPasswordForm } from "./components/Auth/ResetPasswordForm";
+import { GoogleLoginSuccess } from "./components/Auth/GoogleLoginSuccess"; // Import component
 import { ShopPage } from "./components/Shop/ShopPage";
 import { ProductDetailPage } from "./components/Product/ProductDetailPage";
 import { CartPage } from "./components/Cart/CartPage";
@@ -18,7 +21,6 @@ import { AIChatPage } from "./components/AI/AIChatPage";
 import { AITryOnPage } from "./components/AI/AITryOnPage";
 import { OrdersPage } from "./components/Orders/OrdersPage";
 import { FavoritesPage } from "./components/Favorites/FavoritesPage";
-import { RegisterForm } from "./components/Auth/RegisterForm";
 import { SharedCartPage } from "./components/Cart/SharedCartPage";
 import NotFound from "./pages/NotFound";
 import { ComboPage } from "./components/Combo/ComboPage";
@@ -35,6 +37,9 @@ const App = () => (
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginForm />} />
           <Route path="/register" element={<RegisterForm />} />
+          <Route path="/forgot-password" element={<ForgotPasswordForm />} />
+          <Route path="/reset-password" element={<ResetPasswordForm />} />
+          <Route path="/google-login-success" element={<GoogleLoginSuccess />} /> {/* Thêm route này */}
           <Route path="/shop" element={<ShopPage />} />
           <Route path="/combo" element={<ComboPage />} />
           <Route path="/product/:id" element={<ProductDetailPage />} />

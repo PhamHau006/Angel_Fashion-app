@@ -29,7 +29,7 @@ export const HeroSection = () => {
 
       <div className="mb-6">
         <h2 className="text-3xl font-bold mb-2">Bộ sưu tập mới</h2>
-        <p className="text-lg opacity-90 mb-4">Thời trang angel 2024</p>
+        <p className="text-lg opacity-90 mb-4">Thời trang angel 2025</p>
         <Button 
           onClick={() => navigate('/shop')}
           className="bg-white text-primary hover:bg-gray-100"
