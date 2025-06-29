@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,7 +10,8 @@ import { useMutation } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-
+import { Capacitor } from '@capacitor/core';
+import { getApiUrl } from '../../config/api';
 const resetPasswordSchema = z.object({
   newPassword: z.string().min(6, 'Mật khẩu phải có ít nhất 6 ký tự').regex(
     /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,}$/,
@@ -25,7 +26,8 @@ const resetPasswordSchema = z.object({
 
 type ResetPasswordForm = z.infer<typeof resetPasswordSchema>;
 
-const API_URL = 'https://localhost:7217';
+// API URL configuration cho mobile và web
+const API_URL = getApiUrl();
 
 export const ResetPasswordForm = () => {
   const navigate = useNavigate();
@@ -38,30 +40,58 @@ export const ResetPasswordForm = () => {
     resolver: zodResolver(resetPasswordSchema),
   });
 
+  // Debug info
+  useEffect(() => {
+    console.log('ResetPassword API_URL:', API_URL);
+    console.log('Platform:', Capacitor.getPlatform());
+    console.log('IsNative:', Capacitor.isNativePlatform());
+    console.log('Email from URL:', email);
+  }, [email]);
+
   const checkPasswordMutation = useMutation({
     mutationFn: async (password: string) => {
-      const response = await fetch(`${API_URL}/api/Account/CheckPassword?email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`);
-      if (!response.ok) throw new Error('Lỗi kiểm tra mật khẩu');
-      return response.json();
+      console.log('Checking password with:', API_URL);
+      try {
+        const response = await fetch(`${API_URL}/api/Account/CheckPassword?email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`);
+        console.log('Check password response status:', response.status);
+        
+        if (!response.ok) throw new Error('Lỗi kiểm tra mật khẩu');
+        return response.json();
+      } catch (error) {
+        console.error('Check password error:', error);
+        throw error;
+      }
     },
-    onError: () => toast.error('Không thể kiểm tra mật khẩu', { description: 'Lỗi' }),
+    onError: (error) => {
+      console.error('Check password mutation error:', error);
+      toast.error('Không thể kiểm tra mật khẩu', { description: 'Lỗi' });
+    }
   });
 
   const resetPasswordMutation = useMutation({
     mutationFn: async (data: ResetPasswordForm) => {
-      const response = await fetch(`${API_URL}/api/Account/ResetPasswordCustomer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email,
-          newPassword: data.newPassword,
-          loginAfterReset: data.loginAfterReset,
-        }),
-      });
-      if (!response.ok) throw new Error('Lỗi đặt lại mật khẩu');
-      return response.json();
+      console.log('Resetting password with:', API_URL);
+      try {
+        const response = await fetch(`${API_URL}/api/Account/ResetPasswordCustomer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            newPassword: data.newPassword,
+            loginAfterReset: data.loginAfterReset,
+          }),
+        });
+        console.log('Reset password response status:', response.status);
+        
+        if (!response.ok) throw new Error('Lỗi đặt lại mật khẩu');
+        return response.json();
+      } catch (error) {
+        console.error('Reset password error:', error);
+        throw error;
+      }
     },
     onSuccess: (data) => {
+      console.log('Reset password success:', data);
       if (data.success) {
         if (data.data && data.loginAfterReset) {
           localStorage.setItem('accessToken', data.data.accessToken);
@@ -76,16 +106,25 @@ export const ResetPasswordForm = () => {
         toast.error(data.message, { description: 'Lỗi' });
       }
     },
-    onError: () => toast.error('Đặt lại mật khẩu thất bại', { description: 'Lỗi' }),
+    onError: (error) => {
+      console.error('Reset password mutation error:', error);
+      toast.error('Đặt lại mật khẩu thất bại', { description: 'Lỗi' });
+    }
   });
 
   const onSubmit = async (data: ResetPasswordForm) => {
-    const passwordCheck = await checkPasswordMutation.mutateAsync(data.newPassword);
-    if (!passwordCheck.success) {
-      toast.error(passwordCheck.message, { description: 'Lỗi' });
-      return;
+    console.log('Form submit with API_URL:', API_URL);
+    
+    try {
+      const passwordCheck = await checkPasswordMutation.mutateAsync(data.newPassword);
+      if (!passwordCheck.success) {
+        toast.error(passwordCheck.message, { description: 'Lỗi' });
+        return;
+      }
+      resetPasswordMutation.mutate(data);
+    } catch (error) {
+      console.error('Submit error:', error);
     }
-    resetPasswordMutation.mutate(data);
   };
 
   if (!email) {
@@ -99,6 +138,13 @@ export const ResetPasswordForm = () => {
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold text-primary">Đặt lại mật khẩu</CardTitle>
           <p className="text-sm text-muted-foreground">Nhập mật khẩu mới cho tài khoản của bạn</p>
+          {/* Debug info */}
+          <div className="text-xs text-gray-500 mt-2">
+            API: {API_URL} | Platform: {Capacitor.getPlatform()} | Native: {Capacitor.isNativePlatform().toString()}
+          </div>
+          <div className="text-xs text-gray-500">
+            Email: {email}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -122,6 +168,7 @@ export const ResetPasswordForm = () => {
               </div>
               {errors.newPassword && <p className="text-sm text-red-500">{errors.newPassword.message}</p>}
             </div>
+            
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">Xác nhận mật khẩu</Label>
               <div className="relative">
@@ -142,14 +189,30 @@ export const ResetPasswordForm = () => {
               </div>
               {errors.confirmPassword && <p className="text-sm text-red-500">{errors.confirmPassword.message}</p>}
             </div>
+            
             <div className="flex items-center space-x-2">
-              <input type="checkbox" id="loginAfterReset" {...register('loginAfterReset')} className="rounded border-gray-300" />
-              <Label htmlFor="loginAfterReset" className="text-sm">Đăng nhập ngay sau khi đổi mật khẩu</Label>
+              <input 
+                type="checkbox" 
+                id="loginAfterReset" 
+                {...register('loginAfterReset')} 
+                className="rounded border-gray-300" 
+              />
+              <Label htmlFor="loginAfterReset" className="text-sm">
+                Đăng nhập ngay sau khi đổi mật khẩu
+              </Label>
             </div>
-            <Button type="submit" className="w-full bg-primary hover:bg-primary-dark" disabled={resetPasswordMutation.isPending}>
-              {resetPasswordMutation.isPending ? 'Đang xử lý...' : 'Đổi mật khẩu'}
+            
+            <Button 
+              type="submit" 
+              className="w-full bg-primary hover:bg-primary-dark" 
+              disabled={resetPasswordMutation.isPending || checkPasswordMutation.isPending}
+            >
+              {resetPasswordMutation.isPending || checkPasswordMutation.isPending 
+                ? 'Đang xử lý...' 
+                : 'Đổi mật khẩu'}
             </Button>
           </form>
+          
           <div className="text-center">
             <button onClick={() => navigate('/login')} className="text-sm text-primary hover:underline">
               Quay lại đăng nhập

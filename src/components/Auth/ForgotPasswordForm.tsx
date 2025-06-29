@@ -9,7 +9,8 @@ import { useMutation } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-
+import { Capacitor } from '@capacitor/core';
+import { getApiUrl } from '../../config/api';
 const forgotPasswordSchema = z.object({
   email: z.string().email('Email không hợp lệ'),
   verificationCode: z.string().optional(),
@@ -17,7 +18,8 @@ const forgotPasswordSchema = z.object({
 
 type ForgotPasswordForm = z.infer<typeof forgotPasswordSchema>;
 
-const API_URL = 'https://localhost:7217';
+// API URL configuration cho mobile và we
+const API_URL = getApiUrl();
 
 export const ForgotPasswordForm = () => {
   const navigate = useNavigate();
@@ -30,6 +32,13 @@ export const ForgotPasswordForm = () => {
   const { register, handleSubmit, formState: { errors }, getValues } = useForm<ForgotPasswordForm>({
     resolver: zodResolver(forgotPasswordSchema),
   });
+
+  // Debug info
+  useEffect(() => {
+    console.log('ForgotPassword API_URL:', API_URL);
+    console.log('Platform:', Capacitor.getPlatform());
+    console.log('IsNative:', Capacitor.isNativePlatform());
+  }, []);
 
   // Callback cho reCAPTCHA
   const onRecaptchaVerify = useCallback((token: string) => {
@@ -77,28 +86,50 @@ export const ForgotPasswordForm = () => {
 
   const verifyRecaptchaMutation = useMutation({
     mutationFn: async (token: string) => {
+      console.log('Verifying reCAPTCHA with:', API_URL);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
-      const response = await fetch(`${API_URL}/api/Account/VerifyRecaptcha`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ RecaptchaToken: token }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      if (!response.ok) throw new Error('Lỗi xác minh reCAPTCHA');
-      return response.json();
+      
+      try {
+        const response = await fetch(`${API_URL}/api/Account/VerifyRecaptcha`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ RecaptchaToken: token }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        
+        console.log('reCAPTCHA verify response status:', response.status);
+        if (!response.ok) throw new Error('Lỗi xác minh reCAPTCHA');
+        return response.json();
+      } catch (error) {
+        clearTimeout(timeoutId);
+        console.error('reCAPTCHA verify error:', error);
+        throw error;
+      }
     },
-    onError: () => toast.error('Không thể xác minh reCAPTCHA', { description: 'Lỗi' }),
+    onError: (error) => {
+      console.error('reCAPTCHA mutation error:', error);
+      toast.error('Không thể xác minh reCAPTCHA', { description: 'Lỗi' });
+    }
   });
 
   const forgotPasswordMutation = useMutation({
     mutationFn: async (email: string) => {
-      const response = await fetch(`${API_URL}/api/Account/ForgotPasswordCustomer?email=${encodeURIComponent(email)}`);
-      if (!response.ok) throw new Error('Lỗi gửi mã xác minh');
-      return response.json();
+      console.log('Sending forgot password request to:', API_URL);
+      try {
+        const response = await fetch(`${API_URL}/api/Account/ForgotPasswordCustomer?email=${encodeURIComponent(email)}`);
+        console.log('Forgot password response status:', response.status);
+        
+        if (!response.ok) throw new Error('Lỗi gửi mã xác minh');
+        return response.json();
+      } catch (error) {
+        console.error('Forgot password error:', error);
+        throw error;
+      }
     },
     onSuccess: (data) => {
+      console.log('Forgot password success:', data);
       if (data.success) {
         setShowVerification(true);
         setCountdown(60);
@@ -108,16 +139,28 @@ export const ForgotPasswordForm = () => {
         toast.error(data.message, { description: 'Lỗi' });
       }
     },
-    onError: () => toast.error('Không thể gửi mã xác minh', { description: 'Lỗi' }),
+    onError: (error) => {
+      console.error('Forgot password mutation error:', error);
+      toast.error('Không thể gửi mã xác minh', { description: 'Lỗi' });
+    }
   });
 
   const verifyCodeMutation = useMutation({
     mutationFn: async ({ email, code }: { email: string; code: string }) => {
-      const response = await fetch(`${API_URL}/api/Account/VerifyResetPasswordCode?email=${encodeURIComponent(email)}&code=${encodeURIComponent(code)}`);
-      if (!response.ok) throw new Error('Lỗi xác minh mã');
-      return response.json();
+      console.log('Verifying code with:', API_URL);
+      try {
+        const response = await fetch(`${API_URL}/api/Account/VerifyResetPasswordCode?email=${encodeURIComponent(email)}&code=${encodeURIComponent(code)}`);
+        console.log('Verify code response status:', response.status);
+        
+        if (!response.ok) throw new Error('Lỗi xác minh mã');
+        return response.json();
+      } catch (error) {
+        console.error('Verify code error:', error);
+        throw error;
+      }
     },
     onSuccess: (data, variables) => {
+      console.log('Verify code success:', data);
       if (data.success) {
         toast.success(data.message, { description: 'Thành công' });
         navigate(`/reset-password?email=${encodeURIComponent(variables.email)}`);
@@ -125,29 +168,40 @@ export const ForgotPasswordForm = () => {
         toast.error(data.message, { description: 'Lỗi' });
       }
     },
-    onError: () => toast.error('Không thể xác minh mã', { description: 'Lỗi' }),
+    onError: (error) => {
+      console.error('Verify code mutation error:', error);
+      toast.error('Không thể xác minh mã', { description: 'Lỗi' });
+    }
   });
 
   const onSubmit = async (data: ForgotPasswordForm) => {
+    console.log('Form submit with API_URL:', API_URL);
+    
     if (!recaptchaToken) {
       toast.error('Vui lòng hoàn thành reCAPTCHA', { description: 'Lỗi' });
       return;
     }
-    const recaptchaResult = await verifyRecaptchaMutation.mutateAsync(recaptchaToken);
-    if (!recaptchaResult.success) {
-      toast.error(recaptchaResult.message, { description: 'Lỗi' });
-      setRecaptchaToken(null);
-      if (recaptchaLoaded) {
-        window.grecaptcha?.reset();
+    
+    try {
+      const recaptchaResult = await verifyRecaptchaMutation.mutateAsync(recaptchaToken);
+      if (!recaptchaResult.success) {
+        toast.error(recaptchaResult.message, { description: 'Lỗi' });
+        setRecaptchaToken(null);
+        if (recaptchaLoaded) {
+          window.grecaptcha?.reset();
+        }
+        return;
       }
-      return;
-    }
 
-    if (showVerification) {
-      verifyCodeMutation.mutate({ email: data.email, code: data.verificationCode || '' });
-    } else {
-      forgotPasswordMutation.mutate(data.email);
+      if (showVerification) {
+        verifyCodeMutation.mutate({ email: data.email, code: data.verificationCode || '' });
+      } else {
+        forgotPasswordMutation.mutate(data.email);
+      }
+    } catch (error) {
+      console.error('Submit error:', error);
     }
+    
     setRecaptchaToken(null);
     if (recaptchaLoaded) {
       window.grecaptcha?.reset();
@@ -167,7 +221,10 @@ export const ForgotPasswordForm = () => {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold text-primary">Quên mật khẩu</CardTitle>
-          <p className="text-sm text-muted-foreground">{showVerification ? 'Nhập mã xác minh' : 'Nhập email để nhận mã xác minh'}</p>
+          <p className="text-sm text-muted-foreground">
+            {showVerification ? 'Nhập mã xác minh' : 'Nhập email để nhận mã xác minh'}
+          </p>
+        
         </CardHeader>
         <CardContent className="space-y-4">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -183,6 +240,7 @@ export const ForgotPasswordForm = () => {
               />
               {errors.email && <p className="text-sm text-red-500">{errors.email.message}</p>}
             </div>
+            
             {showVerification && (
               <div className="space-y-2">
                 <Label htmlFor="verificationCode">Mã xác minh</Label>
@@ -198,15 +256,24 @@ export const ForgotPasswordForm = () => {
                   Mã có hiệu lực trong: <strong>{Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}</strong>
                 </p>
                 <Button type="button" variant="link" onClick={handleResendCode} disabled={isCounting}>
-                  Gửi lại mã
+                  Gửi lại mã {isCounting && `(${countdown}s)`}
                 </Button>
               </div>
             )}
+            
             <div id="recaptcha-container" className="g-recaptcha"></div>
-            <Button type="submit" className="w-full bg-primary hover:bg-primary-dark" disabled={forgotPasswordMutation.isPending || verifyCodeMutation.isPending}>
-              {showVerification ? 'Xác minh mã' : 'Gửi mã xác minh'}
+            
+            <Button 
+              type="submit" 
+              className="w-full bg-primary hover:bg-primary-dark" 
+              disabled={forgotPasswordMutation.isPending || verifyCodeMutation.isPending || verifyRecaptchaMutation.isPending}
+            >
+              {forgotPasswordMutation.isPending || verifyCodeMutation.isPending || verifyRecaptchaMutation.isPending 
+                ? 'Đang xử lý...' 
+                : showVerification ? 'Xác minh mã' : 'Gửi mã xác minh'}
             </Button>
           </form>
+          
           <div className="text-center">
             <button onClick={() => navigate('/login')} className="text-sm text-primary hover:underline">
               Quay lại đăng nhập

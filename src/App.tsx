@@ -24,7 +24,10 @@ import { FavoritesPage } from "./components/Favorites/FavoritesPage";
 import { SharedCartPage } from "./components/Cart/SharedCartPage";
 import NotFound from "./pages/NotFound";
 import { ComboPage } from "./components/Combo/ComboPage";
-
+import { ComboDetailPage } from "./components/Combo/ComboDetailPage";
+import { QuickFixTest } from './components/Product/quickFix';
+import { EditProfilePage } from "./components/Profile/EditProfilePage";
+import { PaymentResultPage } from './pages/PaymentResultPage';
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -39,16 +42,17 @@ const App = () => (
           <Route path="/register" element={<RegisterForm />} />
           <Route path="/forgot-password" element={<ForgotPasswordForm />} />
           <Route path="/reset-password" element={<ResetPasswordForm />} />
-          <Route path="/google-login-success" element={<GoogleLoginSuccess />} /> {/* Thêm route này */}
+          <Route path="/google-login-success" element={<GoogleLoginSuccess />} /> 
           <Route path="/shop" element={<ShopPage />} />
           <Route path="/combo" element={<ComboPage />} />
           <Route path="/product/:id" element={<ProductDetailPage />} />
-          <Route path="/combo/:id" element={<ProductDetailPage />} />
+          <Route path="/combo/:id" element={<ComboDetailPage />} />
           <Route path="/cart" element={<CartPage />} />
           <Route path="/shared-cart" element={<SharedCartPage />} />
           <Route path="/checkout" element={<CheckoutPage />} />
           <Route path="/messenger" element={<MessengerPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/edit-profile" element={<EditProfilePage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/orders" element={<OrdersPage />} />
           <Route path="/favorites" element={<FavoritesPage />} />
@@ -62,7 +66,9 @@ const App = () => (
           <Route path="/lucky-wheel" element={<LuckyWheelPage />} />
           <Route path="/ai-chat" element={<AIChatPage />} />
           <Route path="/ai-tryon" element={<AITryOnPage />} />
+          <Route path="/payment-result" element={<PaymentResultPage />} />
           <Route path="*" element={<NotFound />} />
+          <Route path="/quick-fix" element={<QuickFixTest />} />
         </Routes>
       </BrowserRouter>
     </TooltipProvider>

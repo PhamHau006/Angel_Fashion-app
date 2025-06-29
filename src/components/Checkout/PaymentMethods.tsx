@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -12,14 +11,14 @@ interface PaymentMethodsProps {
 export const PaymentMethods = ({ paymentMethod, setPaymentMethod }: PaymentMethodsProps) => {
   const paymentOptions = [
     {
-      id: 'cod',
+      id: 'COD',
       name: 'Thanh toán khi nhận hàng (COD)',
       description: 'Thanh toán bằng tiền mặt khi nhận hàng',
       icon: '💵',
       popular: true
     },
     {
-      id: 'vnpay',
+      id: 'VNPay',
       name: 'VNPay',
       description: 'Thanh toán qua VNPay (ATM, Visa, MasterCard)',
       icon: '💳',
@@ -62,7 +61,7 @@ export const PaymentMethods = ({ paymentMethod, setPaymentMethod }: PaymentMetho
           </div>
         </RadioGroup>
 
-        {paymentMethod === 'vnpay' && (
+        {paymentMethod === 'VNPay' && (
           <div className="mt-4 p-4 bg-blue-50 rounded-lg">
             <div className="flex items-center space-x-2 mb-2">
               <span className="text-blue-600">ℹ️</span>
@@ -77,7 +76,7 @@ export const PaymentMethods = ({ paymentMethod, setPaymentMethod }: PaymentMetho
           </div>
         )}
 
-        {paymentMethod === 'cod' && (
+        {paymentMethod === 'COD' && (
           <div className="mt-4 p-4 bg-green-50 rounded-lg">
             <div className="flex items-center space-x-2 mb-2">
               <span className="text-green-600">✅</span>

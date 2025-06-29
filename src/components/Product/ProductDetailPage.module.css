@@ -1,0 +1,104 @@
+/* src/components/Product/ProductDetailPage.module.css */
+.carousel {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+  }
+  
+  .carouselInner {
+    overflow: hidden;
+  }
+  
+  .carouselItem {
+    display: none;
+  }
+  
+  .carouselItem.active {
+    display: block;
+  }
+  
+  .flexContainer {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    padding: 0 40px; /* Dành chỗ cho nút prev/next */
+  }
+  
+  .thumbnailImg {
+    width: calc(25% - 8px); /* 4 ảnh, trừ gap */
+    height: 100px;
+    object-fit: cover;
+    border-radius: 5px;
+    border: 2px solid transparent;
+    transition: border-color 0.3s ease, opacity 0.3s ease;
+    cursor: pointer;
+  }
+  
+  .thumbnailImg:hover,
+  .thumbnailImg.active {
+    border-color: #e7ab3c;
+    opacity: 1;
+  }
+  
+  .carouselControlPrev,
+  .carouselControlNext {
+    width: 40px;
+    height: 40px;
+    top: 50%;
+    transform: translateY(-50%);
+    background-color: rgba(0, 0, 0, 0.6);
+    border: none;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    position: absolute;
+  }
+  
+  .carouselControlPrev {
+    left: 10px;
+  }
+  
+  .carouselControlNext {
+    right: 10px;
+  }
+  
+  .carouselControlPrev:hover,
+  .carouselControlNext:hover {
+    background-color: rgba(0, 0, 0, 0.8);
+  }
+  
+  .carouselControlPrev svg,
+  .carouselControlNext svg {
+    color: white;
+    width: 24px;
+    height: 24px;
+  }
+  
+  @media (max-width: 640px) {
+    .thumbnailImg {
+      width: calc(25% - 6px); /* Giảm gap trên mobile */
+      height: 80px;
+    }
+  
+    .flexContainer {
+      gap: 6px;
+      padding: 0 30px;
+    }
+  
+    .carouselControlPrev,
+    .carouselControlNext {
+      width: 32px;
+      height: 32px;
+    }
+  
+    .carouselControlPrev svg,
+    .carouselControlNext svg {
+      width: 20px;
+      height: 20px;
+    }
+  }
