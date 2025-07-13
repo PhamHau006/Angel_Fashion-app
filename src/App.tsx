@@ -8,7 +8,7 @@ import { LoginForm } from "./components/Auth/LoginForm";
 import { RegisterForm } from "./components/Auth/RegisterForm";
 import { ForgotPasswordForm } from "./components/Auth/ForgotPasswordForm";
 import { ResetPasswordForm } from "./components/Auth/ResetPasswordForm";
-import { GoogleLoginSuccess } from "./components/Auth/GoogleLoginSuccess"; // Import component
+import { GoogleLoginSuccess } from "./components/Auth/GoogleLoginSuccess";
 import { ShopPage } from "./components/Shop/ShopPage";
 import { ProductDetailPage } from "./components/Product/ProductDetailPage";
 import { CartPage } from "./components/Cart/CartPage";
@@ -27,7 +27,8 @@ import { ComboPage } from "./components/Combo/ComboPage";
 import { ComboDetailPage } from "./components/Combo/ComboDetailPage";
 import { QuickFixTest } from './components/Product/quickFix';
 import { EditProfilePage } from "./components/Profile/EditProfilePage";
-import { PaymentResultPage } from './pages/PaymentResultPage';
+import { PaymentResultPage } from './pages/PaymentResultPage'; // ✅ Correctly imported
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -59,13 +60,13 @@ const App = () => (
           <Route path="/payment-info" element={<div>Payment Info - Coming Soon</div>} />
           <Route path="/addresses" element={<div>Addresses - Coming Soon</div>} />
           <Route path="/notifications" element={<div>Notifications - Coming Soon</div>} />
-          <Route path="/edit-profile" element={<div>Edit Profile - Coming Soon</div>} />
           <Route path="/privacy" element={<div>Privacy - Coming Soon</div>} />
           <Route path="/language" element={<div>Language - Coming Soon</div>} />
           <Route path="/help" element={<div>Help - Coming Soon</div>} />
           <Route path="/lucky-wheel" element={<LuckyWheelPage />} />
           <Route path="/ai-chat" element={<AIChatPage />} />
           <Route path="/ai-tryon" element={<AITryOnPage />} />
+          {/* ✅ Enhanced Payment Result Route - Handles VNPay callbacks */}
           <Route path="/payment-result" element={<PaymentResultPage />} />
           <Route path="*" element={<NotFound />} />
           <Route path="/quick-fix" element={<QuickFixTest />} />

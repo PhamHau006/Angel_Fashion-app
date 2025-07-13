@@ -610,10 +610,10 @@ export const ProductDetailPage = () => {
                       }`}
                     onClick={() => setSelectedColor(color.value)}
                   >
-                    <div
+                    {/* <div
                       className="w-6 h-6 rounded-full border border-gray-300"
                       style={{ backgroundColor: color.color }}
-                    />
+                    /> */}
                     <span className="text-sm">{color.name}</span>
                   </div>
                 ))}

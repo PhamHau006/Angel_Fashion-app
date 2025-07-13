@@ -1,10 +1,13 @@
 {
-  "appId": "com.yourapp.angel",
+  "appId": "com.angel.fashion",
   "appName": "Angel Fashion",
   "webDir": "dist",
   "server": {
     "androidScheme": "https",
     "allowNavigation": [
+      "capacitor://localhost",
+      "https://sandbox.vnpayment.vn",
+      "https://97kbdg93-7218.euw.devtunnels.ms",
       "https://192.168.1.150:7218",
       "http://192.168.1.150:7218",
       "https://192.168.1.150:7217",
@@ -16,17 +19,30 @@
     ],
     "cleartext": true
   },
-  "android": {
-    "allowMixedContent": true,
-    "captureInput": true,
-    "webContentsDebuggingEnabled": true
-  },
   "plugins": {
     "CapacitorHttp": {
       "enabled": true
     },
     "BiometricAuth": {
       "androidBiometryStrength": "weak"
+    },
+    "App": {
+      "launchAutoHide": false
+    },
+    "Browser": {
+      "presentationStyle": "popover"
+    },
+    "DeepLinks": {
+      "customScheme": "angelfashion"
     }
+  },
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": true
+  },
+  "ios": {
+    "scheme": "angelfashion",
+    "contentInset": "automatic"
   }
 }

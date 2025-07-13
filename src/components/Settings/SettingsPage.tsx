@@ -63,7 +63,7 @@ export const SettingsPage = () => {
         toast.error(data.message || 'Đăng xuất thất bại', { description: 'Lỗi' });
       }
     } catch (error) {
-      toast.error('Lỗi khi đăng xuất', { description: 'Lỗi' });
+      toast.error('Đăng xuất thành công');
     } finally {
       // Xóa token khỏi localStorage
       localStorage.removeItem('accessToken');

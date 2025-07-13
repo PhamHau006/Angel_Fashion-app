@@ -540,9 +540,11 @@ export const CheckoutPage = () => {
 
  // Sửa hàm handleMobileVNPayPayment - Fixed Mobile Detection
 
+// Enhanced Mobile VNPay Payment Handler with improved callback handling
+
 const handleMobileVNPayPayment = async () => {
   try {
-    console.log('📱 Starting Mobile VNPay Payment...');
+    console.log('📱 Starting Enhanced Mobile VNPay Payment...');
     
     const customerId = getCurrentCustomerId();
     const provinceName = provinces.find((p) => p.ProvinceID === parseInt(shippingInfo.city))?.ProvinceName || '';
@@ -591,7 +593,7 @@ const handleMobileVNPayPayment = async () => {
       throw new Error('No access token found');
     }
 
-    // FIXED: Use mobile API endpoint specifically
+    // Use mobile API endpoint specifically
     const createPaymentUrl = getMobileApiEndpoint('/api/MobileVNPAY/CreatePaymentUrl');
     console.log('📡 Calling Mobile VNPay API:', createPaymentUrl);
     
@@ -616,11 +618,22 @@ const handleMobileVNPayPayment = async () => {
       const orderId = result.orderId;
       
       if (vnpayUrl) {
-        // Show confirmation dialog
+        // ENHANCED: Store payment info in localStorage for callback handling
+        const paymentInfo = {
+          orderId: orderId,
+          amount: result.amount,
+          timestamp: Date.now(),
+          status: 'pending'
+        };
+        localStorage.setItem('vnpay_payment_info', JSON.stringify(paymentInfo));
+        
+        // Show enhanced confirmation dialog
         const confirmPayment = confirm(
-          `Bạn sẽ được chuyển đến VNPay để thanh toán đơn hàng #${orderId}\n\n` +
-          `Số tiền: ${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(result.amount)}\n\n` +
-          `Nhấn "OK" để tiếp tục thanh toán`
+          `🏪 THANH TOÁN VNPAY\n\n` +
+          `📦 Đơn hàng: #${orderId}\n` +
+          `💰 Số tiền: ${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(result.amount)}\n\n` +
+          `🔒 Bạn sẽ được chuyển đến trang VNPay để thanh toán an toàn\n\n` +
+          `✅ Nhấn "OK" để tiếp tục`
         );
         
         if (confirmPayment) {
@@ -628,23 +641,30 @@ const handleMobileVNPayPayment = async () => {
           
           // Show loading message
           toast({
-            title: '🚀 Chuyển hướng thanh toán',
-            description: 'Đang chuyển đến VNPay...',
-            duration: 2000,
+            title: '🚀 Đang chuyển hướng...',
+            description: 'Đang mở trang thanh toán VNPay...',
+            duration: 3000,
           });
+          
+          // ENHANCED: Set up callback listener before redirect
+          setupPaymentCallbackListener(orderId);
+          
+          // ENHANCED: Set up visibility change handler for better UX
+          setupVisibilityChangeHandler(orderId);
           
           // Start polling immediately (before redirect)
           setTimeout(() => {
             startOrderStatusPolling(orderId);
           }, 1000);
           
-          // CRITICAL FIX: Use window.location.replace instead of href
+          // Redirect to VNPay
           setTimeout(() => {
-            window.location.replace(vnpayUrl);
+            window.location.href = vnpayUrl;
           }, 2000);
           
         } else {
           // User cancelled
+          localStorage.removeItem('vnpay_payment_info');
           toast({
             title: '❌ Đã hủy thanh toán',
             description: 'Bạn có thể thử lại hoặc chọn phương thức thanh toán khác',
@@ -654,8 +674,11 @@ const handleMobileVNPayPayment = async () => {
         
       } else {
         throw new Error('No payment URL received from API');
+      }
+    } else {
+      const errorData = await response.text();
+      throw new Error(`Payment creation failed: ${response.status} - ${errorData}`);
     }
-  }
   } catch (error) {
     console.error('❌ Mobile VNPay Error:', error);
     
@@ -677,92 +700,250 @@ const handleMobileVNPayPayment = async () => {
   }
 };
 
-// Enhanced polling function
-const startOrderStatusPolling = (orderId: number) => {
-  console.log(`🔄 Starting status polling for order ${orderId}`);
+// ENHANCED: Setup callback listener for payment result
+const setupPaymentCallbackListener = (orderId) => {
+  console.log('🔊 Setting up payment callback listener for order', orderId);
   
-  // Show loading state
+  // Listen for URL changes (for mobile web apps)
+  const originalPushState = history.pushState;
+  const originalReplaceState = history.replaceState;
+  
+  history.pushState = function(...args) {
+    originalPushState.apply(history, args);
+    checkForPaymentResult();
+  };
+  
+  history.replaceState = function(...args) {
+    originalReplaceState.apply(history, args);
+    checkForPaymentResult();
+  };
+  
+  // Listen for hashchange
+  window.addEventListener('hashchange', checkForPaymentResult);
+  
+  // Listen for storage changes (for multi-tab scenarios)
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'vnpay_payment_result') {
+      handlePaymentResult(JSON.parse(e.newValue));
+    }
+  });
+  
+  // Check current URL
+  checkForPaymentResult();
+};
+
+// ENHANCED: Setup visibility change handler
+const setupVisibilityChangeHandler = (orderId) => {
+  console.log('👁️ Setting up visibility change handler for order', orderId);
+  
+  const handleVisibilityChange = () => {
+    if (!document.hidden) {
+      console.log('👁️ Page became visible, checking payment status...');
+      
+      // Check if we have payment info in storage
+      const paymentInfo = localStorage.getItem('vnpay_payment_info');
+      if (paymentInfo) {
+        const info = JSON.parse(paymentInfo);
+        if (info.orderId === orderId && info.status === 'pending') {
+          // Check payment status
+          setTimeout(() => {
+            checkPaymentStatus(orderId);
+          }, 1000);
+        }
+      }
+      
+      // Also check URL for payment result
+      checkForPaymentResult();
+    }
+  };
+  
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  window.addEventListener('focus', handleVisibilityChange);
+  
+  // Cleanup after 10 minutes
+  setTimeout(() => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('focus', handleVisibilityChange);
+  }, 600000);
+};
+
+// ENHANCED: Check for payment result in URL
+const checkForPaymentResult = () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const status = urlParams.get('status');
+  const orderId = urlParams.get('orderId');
+  
+  if (status && orderId) {
+    console.log('💰 Payment result found in URL:', { status, orderId });
+    
+    const result = {
+      status,
+      orderId: parseInt(orderId),
+      message: urlParams.get('message'),
+      error: urlParams.get('error'),
+      amount: urlParams.get('amount'),
+      transactionNo: urlParams.get('transactionNo'),
+      timestamp: urlParams.get('timestamp')
+    };
+    
+    handlePaymentResult(result);
+  }
+};
+
+// ENHANCED: Handle payment result
+const handlePaymentResult = (result) => {
+  console.log('💰 Handling payment result:', result);
+  
+  // Clear payment info from storage
+  localStorage.removeItem('vnpay_payment_info');
+  
+  // Clear URL parameters
+  if (window.location.search.includes('status=')) {
+    const cleanUrl = window.location.origin + window.location.pathname;
+    history.replaceState({}, document.title, cleanUrl);
+  }
+  
+  if (result.status === 'success') {
+    toast({
+      title: '✅ Thanh toán thành công!',
+      description: `Đơn hàng #${result.orderId} đã được thanh toán thành công`,
+      duration: 5000,
+    });
+    
+    // Navigate to orders page
+    setTimeout(() => {
+      navigate('/orders');
+    }, 2000);
+    
+  } else if (result.status === 'failed') {
+    toast({
+      title: '❌ Thanh toán thất bại',
+      description: result.error || result.message || 'Giao dịch không thành công',
+      variant: 'destructive',
+      duration: 5000,
+    });
+    
+  } else if (result.status === 'error') {
+    toast({
+      title: '⚠️ Có lỗi xảy ra',
+      description: result.error || result.message || 'Lỗi xử lý thanh toán',
+      variant: 'destructive',
+      duration: 5000,
+    });
+  }
+};
+
+// ENHANCED: Check payment status directly
+const checkPaymentStatus = async (orderId) => {
+  try {
+    const accessToken = localStorage.getItem('accessToken');
+    const checkUrl = getMobileApiEndpoint(`/api/MobileVNPAY/CheckOrderStatus/${orderId}`);
+    
+    const response = await fetch(checkUrl, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log(`📊 Payment status check: Order ${orderId}:`, data);
+
+      if (data.status === 'success' && data.isPaid) {
+        handlePaymentResult({
+          status: 'success',
+          orderId: orderId,
+          message: 'Thanh toán thành công',
+          amount: data.totalAmount
+        });
+        return true;
+      } else if (data.status === 'failed' || data.isCancelled) {
+        handlePaymentResult({
+          status: 'failed',
+          orderId: orderId,
+          message: 'Thanh toán thất bại',
+          error: 'Đơn hàng đã bị hủy'
+        });
+        return true;
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error checking payment status:', error);
+  }
+  
+  return false;
+};
+
+// Enhanced polling function
+const startOrderStatusPolling = (orderId) => {
+  console.log(`🔄 Starting enhanced status polling for order ${orderId}`);
+  
+  // Show initial loading state
   toast({
-    title: '⏳ Đang chờ thanh toán',
-    description: 'Hoàn tất thanh toán trong tab mới. Hệ thống đang kiểm tra kết quả...',
-    duration: 5000, // Show for 5 seconds
+    title: '⏳ Đang xử lý thanh toán',
+    description: 'Vui lòng hoàn tất thanh toán. Hệ thống đang tự động kiểm tra kết quả...',
+    duration: 5000,
   });
 
   let pollCount = 0;
-  const maxPolls = 150; // 5 minutes (150 * 2 seconds)
+  const maxPolls = 180; // 6 minutes (180 * 2 seconds)
   
   const pollInterval = setInterval(async () => {
     pollCount++;
     
-    try {
-      const accessToken = localStorage.getItem('accessToken');
-      const checkUrl = getMobileApiEndpoint(`/api/MobileVNPAY/CheckOrderStatus/${orderId}`);
-      
-      const response = await fetch(checkUrl, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log(`📊 Poll ${pollCount}: Order ${orderId} status:`, data);
-
-        if (data.status === 'success' && data.isPaid) {
-          // Payment successful
-          clearInterval(pollInterval);
-          
-          toast({
-            title: '✅ Thanh toán thành công!',
-            description: `Đơn hàng #${orderId} đã được thanh toán thành công`,
-            duration: 5000,
-          });
-          
-          // Navigate to success page
-          setTimeout(() => {
-            navigate(`/payment-result?status=success&orderId=${orderId}&amount=${data.totalAmount}&message=Thanh toán thành công`);
-          }, 1000);
-          return;
-          
-        } else if (data.status === 'failed' || data.isCancelled) {
-          // Payment failed
-          clearInterval(pollInterval);
-          
-          toast({
-            title: '❌ Thanh toán thất bại',
-            description: 'Đơn hàng đã bị hủy hoặc thanh toán không thành công',
-            variant: 'destructive',
-            duration: 5000,
-          });
-          
-          setTimeout(() => {
-            navigate(`/payment-result?status=failed&orderId=${orderId}&message=Thanh toán thất bại`);
-          }, 1000);
-          return;
-        }
-        
-        // Still pending, continue polling
-        if (pollCount % 15 === 0) { // Every 30 seconds
-          const minutesWaited = Math.floor(pollCount * 2 / 60);
-          toast({
-            title: '⏳ Vẫn đang chờ thanh toán',
-            description: `Đã chờ ${minutesWaited} phút. Hãy hoàn tất thanh toán trong tab VNPay.`,
-            duration: 3000,
-          });
-        }
-      }
-    } catch (error) {
-      console.error('❌ Error polling order status:', error);
+    // Check if payment result was already handled
+    const paymentInfo = localStorage.getItem('vnpay_payment_info');
+    if (!paymentInfo) {
+      console.log('🛑 Payment info cleared, stopping polling');
+      clearInterval(pollInterval);
+      return;
     }
     
-    // Auto timeout after 5 minutes
+    try {
+      const statusResolved = await checkPaymentStatus(orderId);
+      
+      if (statusResolved) {
+        clearInterval(pollInterval);
+        return;
+      }
+      
+      // Progress indicators
+      if (pollCount === 30) { // After 1 minute
+        toast({
+          title: '⏳ Vẫn đang chờ thanh toán',
+          description: 'Đã chờ 1 phút. Hãy hoàn tất thanh toán trong tab VNPay.',
+          duration: 3000,
+        });
+      } else if (pollCount === 90) { // After 3 minutes
+        toast({
+          title: '⏰ Đã chờ 3 phút',
+          description: 'Nếu bạn đã thanh toán, vui lòng quay lại ứng dụng.',
+          duration: 4000,
+        });
+      } else if (pollCount === 150) { // After 5 minutes
+        toast({
+          title: '⚠️ Sắp hết thời gian chờ',
+          description: 'Còn 1 phút. Vui lòng hoàn tất thanh toán.',
+          variant: 'destructive',
+          duration: 4000,
+        });
+      }
+      
+    } catch (error) {
+      console.error('❌ Error in polling:', error);
+    }
+    
+    // Auto timeout after 6 minutes
     if (pollCount >= maxPolls) {
       clearInterval(pollInterval);
       
+      // Clear payment info
+      localStorage.removeItem('vnpay_payment_info');
+      
       toast({
         title: '⏰ Hết thời gian chờ',
-        description: 'Quá thời gian chờ thanh toán. Kiểm tra lại trong phần "Đơn hàng của tôi"',
+        description: 'Quá thời gian chờ thanh toán. Kiểm tra lại trong "Đơn hàng của tôi".',
         variant: 'destructive',
         duration: 5000,
       });
@@ -773,6 +954,30 @@ const startOrderStatusPolling = (orderId: number) => {
     }
   }, 2000); // Poll every 2 seconds
 };
+
+// ENHANCED: Initialize payment result handler on page load
+useEffect(() => {
+  // Check for existing payment in progress
+  const paymentInfo = localStorage.getItem('vnpay_payment_info');
+  if (paymentInfo) {
+    const info = JSON.parse(paymentInfo);
+    const timeElapsed = Date.now() - info.timestamp;
+    
+    // If payment is less than 10 minutes old, continue polling
+    if (timeElapsed < 600000 && info.status === 'pending') {
+      console.log('🔄 Resuming payment polling for order', info.orderId);
+      startOrderStatusPolling(info.orderId);
+      setupPaymentCallbackListener(info.orderId);
+      setupVisibilityChangeHandler(info.orderId);
+    } else {
+      // Clean up old payment info
+      localStorage.removeItem('vnpay_payment_info');
+    }
+  }
+  
+  // Check for payment result in URL on page load
+  checkForPaymentResult();
+}, []);
 
   const handleNextStep = () => {
     if (currentStep === 1) {
