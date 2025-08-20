@@ -13,11 +13,9 @@ import {
   CheckCircle, 
   XCircle, 
   Clock, 
-  ShoppingBag, 
   FileText, 
   MapPin, 
   DollarSign, 
-  Calendar, 
   User,
   Phone,
   Copy,
@@ -29,8 +27,10 @@ import { useNavigate } from 'react-router-dom';
 import { getApiUrl } from '../../config/api';
 import { jwtDecode } from 'jwt-decode';
 import axios from 'axios';
+import ProductReviews from '../Product/ProductReviews';
 
 interface OrderItem {
+  id?: number; // Mã chi tiết hóa đơn (Id field from backend)
   tenSanPham?: string;
   tenCombo?: string;
   bienThe?: string;
@@ -41,6 +41,12 @@ interface OrderItem {
   maCtsp?: number;
   maCombo?: number;
   tenHinhAnh?: string;
+}
+
+interface ReviewItemData {
+  productId: number; // mã sản phẩm/combo để hiển thị
+  orderDetailId: number; // mã chi tiết hóa đơn để gửi đánh giá
+  isProduct: boolean;
 }
 
 interface ComboDetail {
@@ -91,6 +97,9 @@ export const OrdersPage = () => {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewItem, setReviewItem] = useState<ReviewItemData | null>(null);
+  const [orderToCancel, setOrderToCancel] = useState<Order | null>(null);
   const apiUrl = getApiUrl();
 
   const statusOptions = [
@@ -123,7 +132,7 @@ export const OrdersPage = () => {
         return { label: 'Đang giao', color: 'bg-blue-500', icon: Truck };
       case 'đã nhận':
       case 'đã thanh toán':
-        return { label: 'Đã giao', color: 'bg-green-500', icon: CheckCircle };
+        return { label: 'Đã nhận', color: 'bg-green-500', icon: CheckCircle };
       case 'đã hủy':
       case 'hoàn trả/hoàn tiền':
         return { label: status, color: 'bg-red-500', icon: XCircle };
@@ -132,7 +141,6 @@ export const OrdersPage = () => {
     }
   };
 
-  // Create timeline for order progress
   const createOrderTimeline = (order: Order) => {
     const timeline = [
       {
@@ -166,14 +174,13 @@ export const OrdersPage = () => {
       },
       {
         step: 5,
-        title: 'Đã giao',
+        title: 'Đã nhận',
         description: 'Đơn hàng đã được giao thành công',
         time: ['Đã nhận', 'Đã thanh toán'].includes(order.tinhTrang) ? formatDate(order.ngayNhan) : '',
         status: ['Đã nhận', 'Đã thanh toán'].includes(order.tinhTrang) ? 'completed' : 'pending'
       }
     ];
 
-    // Handle cancelled orders
     if (['Đã hủy', 'Hoàn trả/Hoàn tiền'].includes(order.tinhTrang)) {
       return timeline.map((item, index) => ({
         ...item,
@@ -226,6 +233,25 @@ export const OrdersPage = () => {
     }
   };
 
+  // Debug function để kiểm tra dữ liệu đơn hàng
+  const debugOrderData = (order: Order) => {
+    console.log('📊 Debug Order Data:');
+    console.log('- Order ID:', order.maHd);
+    console.log('- Order Status:', order.tinhTrang);
+    console.log('- Order Items (cthoadons):');
+    order.cthoadons.forEach((item, index) => {
+      console.log(`  Item ${index}:`, {
+        id: item.id, // Mã chi tiết hóa đơn
+        tenSanPham: item.tenSanPham,
+        tenCombo: item.tenCombo,
+        maCtsp: item.maCtsp,
+        maCombo: item.maCombo,
+        isValidForReview: !!(item.id && (item.maCtsp || item.maCombo)),
+        canReview: ['đã nhận', 'đã thanh toán'].includes(order.tinhTrang.toLowerCase())
+      });
+    });
+  };
+
   const fetchOrders = async () => {
     setLoading(true);
     try {
@@ -241,11 +267,11 @@ export const OrdersPage = () => {
           Authorization: `Bearer ${accessToken}`,
         },
       });
-      console.log('API response:', response.data); // Debug
+      console.log('📥 API response:', response.data);
       setOrders(response.data.data || []);
       setTotalPage(response.data.toTalPage || 1);
     } catch (error) {
-      console.error('Error fetching orders:', error);
+      console.error('❌ Error fetching orders:', error);
       toast({ title: 'Lỗi', description: 'Không thể tải danh sách đơn hàng', variant: 'destructive' });
       if (axios.isAxiosError(error) && error.response?.status === 401) {
         navigate('/login');
@@ -337,11 +363,64 @@ export const OrdersPage = () => {
     }
   };
 
+  // Fixed openReviewModal function
+  const openReviewModal = (item: OrderItem, orderStatus: string) => {
+    console.log('🔍 Opening review modal for item:', item);
+    console.log('🔍 Order status:', orderStatus);
+
+    // Kiểm tra trạng thái đơn hàng trước
+    const validStatuses = ['đã nhận', 'đã thanh toán'];
+    if (!validStatuses.includes(orderStatus.toLowerCase())) {
+      toast({
+        title: 'Không thể đánh giá',
+        description: 'Bạn chỉ có thể đánh giá khi đơn hàng ở trạng thái "Đã nhận" hoặc "Đã thanh toán"',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Kiểm tra có đủ thông tin không
+    if (!item.id) {
+      console.error('❌ Missing order detail ID (item.id):', item);
+      toast({
+        title: 'Lỗi',
+        description: 'Không thể xác định mã chi tiết hóa đơn để đánh giá',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!item.maCtsp && !item.maCombo) {
+      console.error('❌ Missing product/combo ID:', item);
+      toast({
+        title: 'Lỗi',
+        description: 'Không thể xác định sản phẩm hoặc combo để đánh giá',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Set đúng dữ liệu
+    const reviewData: ReviewItemData = {
+      productId: item.maCtsp || item.maCombo!, // mã sản phẩm/combo để load reviews
+      orderDetailId: item.id!, // mã chi tiết hóa đơn để gửi đánh giá
+      isProduct: !!item.maCtsp,
+    };
+
+    console.log('✅ Setting review item data:', reviewData);
+    setReviewItem(reviewData);
+    setShowReviewModal(true);
+  };
+
+  // Fixed setSelectedOrder with debug
+  const openOrderDetailModal = (order: Order) => {
+    debugOrderData(order); // Debug data
+    setSelectedOrder(order);
+  };
+
   useEffect(() => {
     fetchOrders();
   }, [page]);
-
-  const [orderToCancel, setOrderToCancel] = useState<Order | null>(null);
 
   const OrderCard = ({ order }: { order: Order }) => {
     const statusInfo = getStatusInfo(order.tinhTrang);
@@ -395,7 +474,7 @@ export const OrdersPage = () => {
                 variant="default"
                 size="sm"
                 className="flex-1 bg-pink-500 hover:bg-pink-600 text-white"
-                onClick={() => setSelectedOrder(order)}
+                onClick={() => openOrderDetailModal(order)} // Use debug function
               >
                 Xem chi tiết
               </Button>
@@ -483,7 +562,6 @@ export const OrdersPage = () => {
           )}
         </div>
 
-        {/* Cancel Order Dialog */}
         <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
           <DialogContent className="bg-white rounded-lg shadow-xl">
             <DialogHeader>
@@ -507,7 +585,6 @@ export const OrdersPage = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Enhanced Order Detail Dialog */}
         <Dialog open={!!selectedOrder} onOpenChange={() => setSelectedOrder(null)}>
           {selectedOrder && (
             <DialogContent className="max-w-[95vw] sm:max-w-4xl bg-white rounded-lg shadow-xl overflow-y-auto max-h-[90vh] p-4">
@@ -530,13 +607,11 @@ export const OrdersPage = () => {
               </DialogHeader>
 
               <div className="space-y-6">
-                {/* Order Progress */}
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-base">Trạng thái đơn hàng</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {/* Progress Bar */}
                     <div className="mb-6">
                       <Progress value={getProgressValue(selectedOrder)} className="h-2 mb-2" />
                       <div className="text-xs text-gray-600 text-center">
@@ -544,12 +619,10 @@ export const OrdersPage = () => {
                       </div>
                     </div>
 
-                    {/* Timeline Steps */}
                     <div className="relative">
                       <div className="flex justify-between items-start">
                         {createOrderTimeline(selectedOrder).map((item, index) => (
                           <div key={item.step} className="flex flex-col items-center flex-1 relative">
-                            {/* Connection Line */}
                             {index < createOrderTimeline(selectedOrder).length - 1 && (
                               <div 
                                 className={`absolute top-5 left-1/2 w-full h-0.5 transform translate-x-1/2 ${
@@ -559,8 +632,6 @@ export const OrdersPage = () => {
                                 style={{ zIndex: 1 }}
                               />
                             )}
-                            
-                            {/* Icon Circle */}
                             <div 
                               className={`w-10 h-10 rounded-full flex items-center justify-center border-2 mb-2 relative z-10 ${
                                 item.status === 'completed' 
@@ -574,8 +645,6 @@ export const OrdersPage = () => {
                             >
                               {getStepIcon(item.step, item.status)}
                             </div>
-                            
-                            {/* Step Info */}
                             <div className="text-center max-w-[80px]">
                               <div className={`font-medium text-xs mb-1 ${
                                 item.status === 'completed' ? 'text-green-600' :
@@ -599,7 +668,6 @@ export const OrdersPage = () => {
                       </div>
                     </div>
 
-                    {/* Tracking Info */}
                     {selectedOrder.tinhTrang === 'Đã giao cho đơn vị vận chuyển' && selectedOrder.maCode && (
                       <div className="mt-4 p-3 bg-blue-50 rounded-lg">
                         <div className="flex items-center justify-between mb-2">
@@ -627,7 +695,6 @@ export const OrdersPage = () => {
                 </Card>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {/* Shipping Info */}
                   <Card>
                     <CardHeader>
                       <CardTitle className="flex items-center space-x-2 text-base">
@@ -651,7 +718,6 @@ export const OrdersPage = () => {
                     </CardContent>
                   </Card>
 
-                  {/* Payment Info */}
                   <Card>
                     <CardHeader>
                       <CardTitle className="flex items-center space-x-2 text-base">
@@ -686,49 +752,64 @@ export const OrdersPage = () => {
                   </Card>
                 </div>
 
-                {/* Order Items */}
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-base">Sản phẩm đã đặt</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">
-                      {/* Single Products */}
                       {selectedOrder.cthoadons.filter(item => !item.maCombo).map((item, index) => (
                         <div key={`product-${index}`} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                       
                           <div className="flex-1">
                             <h3 className="font-medium text-sm">{item.tenSanPham}</h3>
                             {item.bienThe && <p className="text-xs text-gray-500">{item.bienThe}</p>}
                             <p className="text-xs text-gray-500">Số lượng: {item.soLuong}</p>
+                            {/* Debug info */}
+                            <p className="text-xs text-red-500">Debug - ID: {item.id}, maCtsp: {item.maCtsp}</p>
                           </div>
                           <div className="text-right">
                             <p className="font-medium text-sm">{formatCurrency(item.gia)}</p>
                             <p className="text-xs text-gray-500">
                               Tổng: {formatCurrency(item.gia * item.soLuong)}
                             </p>
+                            {(selectedOrder.tinhTrang.toLowerCase() === 'đã nhận' || 
+                              selectedOrder.tinhTrang.toLowerCase() === 'đã thanh toán') && (
+                              <Button
+                                className="mt-2 bg-pink-500 hover:bg-pink-600 text-white text-xs"
+                                onClick={() => openReviewModal(item, selectedOrder.tinhTrang)}
+                              >
+                                Đánh giá sản phẩm
+                              </Button>
+                            )}
                           </div>
                         </div>
                       ))}
 
-                      {/* Combo Products */}
                       {selectedOrder.cthoadons.filter(item => item.maCombo).map((comboItem, index) => (
                         <div key={`combo-${index}`} className="p-3 bg-blue-50 rounded-lg">
                           <div className="flex items-center space-x-3 mb-2">
-                           
                             <div className="flex-1">
                               <h3 className="font-medium text-sm">{comboItem.tenCombo}</h3>
                               <p className="text-xs text-gray-500">Số lượng combo: {comboItem.soLuong}</p>
+                              {/* Debug info */}
+                              <p className="text-xs text-red-500">Debug - ID: {comboItem.id}, maCombo: {comboItem.maCombo}</p>
                             </div>
                             <div className="text-right">
                               <p className="font-medium text-sm">{formatCurrency(comboItem.gia)}</p>
                               <p className="text-xs text-gray-500">
                                 Tổng: {formatCurrency(comboItem.gia * comboItem.soLuong)}
                               </p>
+                              {(selectedOrder.tinhTrang.toLowerCase() === 'đã nhận' || 
+                                selectedOrder.tinhTrang.toLowerCase() === 'đã thanh toán') && (
+                                <Button
+                                  className="mt-2 bg-pink-500 hover:bg-pink-600 text-white text-xs"
+                                  onClick={() => openReviewModal(comboItem, selectedOrder.tinhTrang)}
+                                >
+                                  Đánh giá combo
+                                </Button>
+                              )}
                             </div>
                           </div>
-                          
-                          {/* Combo Details */}
                           <div className="ml-4 space-y-1">
                             <p className="text-xs font-medium text-gray-700">Chi tiết combo:</p>
                             {selectedOrder.chitietcombohoadons
@@ -743,7 +824,6 @@ export const OrdersPage = () => {
                         </div>
                       ))}
 
-                      {/* No items message */}
                       {selectedOrder.cthoadons.length === 0 && (
                         <div className="text-center text-gray-500 py-4">
                           <Package size={32} className="mx-auto mb-2 text-gray-300" />
@@ -754,7 +834,6 @@ export const OrdersPage = () => {
                   </CardContent>
                 </Card>
 
-                {/* Cancel Reason (if applicable) */}
                 {(selectedOrder.tinhTrang.toLowerCase() === 'đã hủy' || 
                   selectedOrder.tinhTrang.toLowerCase() === 'hoàn trả/hoàn tiền') && 
                   selectedOrder.lyDoHuy && (
@@ -773,7 +852,6 @@ export const OrdersPage = () => {
                   </Card>
                 )}
 
-                {/* Action Buttons */}
                 <div className="flex space-x-3 pt-4 border-t">
                   <Button 
                     variant="outline" 
@@ -790,16 +868,34 @@ export const OrdersPage = () => {
                       Liên hệ người bán
                     </Button>
                   )}
-                  {(selectedOrder.tinhTrang.toLowerCase() === 'đã nhận' || 
-                    selectedOrder.tinhTrang.toLowerCase() === 'đã thanh toán') && (
-                    <Button 
-                      className="flex-1 bg-pink-500 hover:bg-pink-600 text-white"
-                    >
-                      Đánh giá sản phẩm
-                    </Button>
-                  )}
                 </div>
               </div>
+            </DialogContent>
+          )}
+        </Dialog>
+
+        <Dialog open={showReviewModal} onOpenChange={() => setShowReviewModal(false)}>
+          {reviewItem && (
+            <DialogContent className="max-w-[95vw] sm:max-w-4xl bg-white rounded-lg shadow-xl overflow-y-auto max-h-[90vh] p-4">
+              <DialogHeader>
+                <DialogTitle className="text-lg font-semibold text-gray-800">
+                  Đánh giá {reviewItem.isProduct ? 'Sản phẩm' : 'Combo'}
+                </DialogTitle>
+              </DialogHeader>
+              <ProductReviews
+                productId={reviewItem.productId} // Mã sản phẩm/combo để load reviews
+                isProduct={reviewItem.isProduct}
+                orderDetailId={reviewItem.orderDetailId} // Mã chi tiết hóa đơn để gửi đánh giá
+                showWriteReview={true}
+                currentUserId={jwtDecode<any>(localStorage.getItem('accessToken') || '').sub}
+                onReviewSubmitted={() => {
+                  setShowReviewModal(false);
+                  toast({
+                    title: 'Thành công',
+                    description: 'Đánh giá đã được gửi thành công!',
+                  });
+                }}
+              />
             </DialogContent>
           )}
         </Dialog>

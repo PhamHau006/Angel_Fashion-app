@@ -1,5 +1,3 @@
-// ProductDetailPage.tsx - Complete với Cart Integration
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MobileLayout } from '../Layout/MobileLayout';
@@ -23,20 +21,11 @@ import {
   ChevronRight,
   Download
 } from 'lucide-react';
-import { ProductReviews } from './ProductReviews';
+import ProductReviews from '../Product/ProductReviews';
 import { SimilarProducts } from './SimilarProducts';
 import { Capacitor } from '@capacitor/core';
 import styles from './ProductDetailPage.module.css';
-
-// Import cart service
-import {
-  CartService,
-  getCurrentCustomerId,
-  validateProductCartData
-} from '../../services/cartService';
-
-// Import API config
-import { getApiUrl, getImageUrl, getDebugInfo } from '../../config/api';
+import { getApiUrl, getImageUrl, getDebugInfo, getAuthToken } from '../../config/api';
 
 interface ProductColor {
   name: string;
@@ -49,7 +38,7 @@ interface ProductImage {
 }
 
 interface ProductDetail {
-  id?: number;           // Product detail ID (maCtsp)
+  id?: number;
   mauSac?: string;
   kichThuoc?: string;
   donGia?: number;
@@ -68,13 +57,20 @@ interface Product {
   colors: ProductColor[];
 }
 
+interface FavoriteProduct {
+  MaSp: number;
+}
+
 const API_URL = getApiUrl();
 
 export const ProductDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
-
+  const [isFavorited, setIsFavorited] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isFetchingFavorites, setIsFetchingFavorites] = useState(false);
   const [product, setProduct] = useState<Product | null>(null);
   const [allImages, setAllImages] = useState<ProductImage[]>([]);
   const [currentImage, setCurrentImage] = useState(1);
@@ -82,7 +78,6 @@ export const ProductDetailPage = () => {
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedColor, setSelectedColor] = useState('');
   const [quantity, setQuantity] = useState(1);
-  const [isFavorite, setIsFavorite] = useState(false);
   const [showTryOn, setShowTryOn] = useState(false);
   const [tryOnImage, setTryOnImage] = useState<File | null>(null);
   const [tryOnPreview, setTryOnPreview] = useState<string | null>(null);
@@ -90,7 +85,6 @@ export const ProductDetailPage = () => {
   const [tryOnLoading, setTryOnLoading] = useState(false);
   const [tryOnError, setTryOnError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [addingToCart, setAddingToCart] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -160,7 +154,7 @@ export const ProductDetailPage = () => {
         if (colors.length > 0) setSelectedColor(colors[0].value);
       } catch (error) {
         console.error('Product detail fetch error:', error);
-        setError(error.message || 'Không thể tải sản phẩm');
+        setError(error instanceof Error ? error.message : 'Không thể tải sản phẩm');
       } finally {
         setLoading(false);
       }
@@ -170,6 +164,190 @@ export const ProductDetailPage = () => {
       fetchProduct();
     }
   }, [id]);
+
+  // Fetch user's favorite products to determine initial isFavorited state
+  useEffect(() => {
+    const fetchFavorites = async () => {
+      const token = getAuthToken();
+      if (!token) {
+        console.log('🔑 No auth token, skipping favorites fetch');
+        return;
+      }
+
+      setIsFetchingFavorites(true);
+      try {
+        const response = await fetch(`${API_URL}/api/Favorite/GetFavoriteProducts`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('❌ Error fetching favorites:', response.status, errorText);
+          return;
+        }
+
+        const result = await response.json();
+        console.log('📦 Favorites API response:', result);
+
+        let favoriteProducts: FavoriteProduct[] = [];
+        if (result.success && result.data) {
+          favoriteProducts = result.data;
+        } else if (Array.isArray(result)) {
+          favoriteProducts = result;
+        } else if (result.data && Array.isArray(result.data)) {
+          favoriteProducts = result.data;
+        }
+
+        const isProductFavorited = favoriteProducts.some(
+          (fav: FavoriteProduct) => fav.MaSp === parseInt(id || '0', 10)
+        );
+        setIsFavorited(isProductFavorited);
+        console.log(`❤️ Product ${id} is ${isProductFavorited ? 'favorited' : 'not favorited'}`);
+      } catch (err) {
+        console.error('❌ Error fetching favorites:', err);
+      } finally {
+        setIsFetchingFavorites(false);
+      }
+    };
+
+    fetchFavorites();
+  }, [id]);
+
+  // Handle favorite button click
+  const handleAddToFavorites = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    console.log('❤️ FAVORITE BUTTON CLICKED! Product ID:', id);
+
+    setIsLoading(true);
+    setError(null);
+
+    const token = getAuthToken();
+    if (!token) {
+      const errorMsg = 'Vui lòng đăng nhập để thêm/xóa sản phẩm yêu thích';
+      console.error('❌ Auth Error:', errorMsg);
+      setError(errorMsg);
+      setIsLoading(false);
+      toast({
+        title: "Lỗi",
+        description: errorMsg,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    let customerId: number | null = null;
+    try {
+      const tokenParts = token.split('.');
+      if (tokenParts.length === 3) {
+        const payload = JSON.parse(atob(tokenParts[1]));
+        customerId = payload.sub ? parseInt(payload.sub) : null;
+        console.log('👤 Customer ID from JWT sub:', customerId);
+      }
+    } catch (jwtError) {
+      console.error('❌ Error decoding JWT:', jwtError);
+    }
+
+    if (!customerId) {
+      try {
+        const customerIdKeys = ['customerId', 'userId', 'customer_id', 'user_id'];
+        for (const key of customerIdKeys) {
+          const idFromStorage = localStorage.getItem(key);
+          if (idFromStorage && idFromStorage.trim() !== '') {
+            const parsedId = parseInt(idFromStorage, 10);
+            if (!isNaN(parsedId)) {
+              customerId = parsedId;
+              console.log(`👤 Using backup customer ID from localStorage key: ${key}, value: ${customerId}`);
+              break;
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ Error getting backup customer ID:', error);
+      }
+    }
+
+    try {
+      const payload = customerId
+        ? { MaKh: customerId, MaSp: parseInt(id || '0', 10) }
+        : { MaSp: parseInt(id || '0', 10) };
+
+      if (isFavorited) {
+        // Remove from favorites
+        const response = await fetch(`${API_URL}/api/Favorite/DeleteFavoriteProducts`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('❌ Error removing favorite:', response.status, errorText);
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+
+        console.log('✅ Removed from favorites:', id);
+        setIsFavorited(false);
+        toast({
+          title: "Đã xóa",
+          description: "Sản phẩm đã được xóa khỏi danh sách yêu thích",
+          variant: "default"
+        });
+      } else {
+        // Add to favorites
+        const response = await fetch(`${API_URL}/api/Favorite/AddFavoriteProduct`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('❌ Error adding favorite:', response.status, errorText);
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+
+        console.log('✅ Added to favorites:', id);
+        setIsFavorited(true);
+        toast({
+          title: "Đã thêm",
+          description: "Sản phẩm đã được thêm vào danh sách yêu thích",
+          variant: "default"
+        });
+      }
+    } catch (err) {
+      console.error('❌ Error in favorite operation:', err);
+      let errorMessage = isFavorited
+        ? 'Không thể xóa sản phẩm khỏi yêu thích'
+        : 'Không thể thêm sản phẩm vào yêu thích';
+      if (err instanceof Error) {
+        try {
+          const errorObj = JSON.parse(err.message.replace(/^HTTP \d+: /, ''));
+          errorMessage = errorObj.message || errorMessage;
+        } catch {
+          errorMessage = err.message;
+        }
+      }
+      setError(errorMessage);
+      toast({
+        title: "Lỗi",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+      console.log('🏁 Favorite operation completed');
+    }
+  };
 
   // Calculate available sizes based on selected color
   const sizes = product?.productDetails
@@ -201,10 +379,10 @@ export const ProductDetailPage = () => {
     }).format(price);
   };
 
-  // ===== ADD TO CART FUNCTION =====
+  // Add to cart function
   const handleAddToCart = async () => {
     try {
-      // Validate selection
+      setAddingToCart(true);
       if (!selectedColor) {
         toast({
           title: "Chưa chọn màu sắc",
@@ -232,21 +410,19 @@ export const ProductDetailPage = () => {
         return;
       }
 
-      // Validate token
-      const token = localStorage.getItem('accessToken');
+      const token = getAuthToken();
       if (!token) {
         toast({
           title: "Lỗi",
-          description: "Không tìm thấy token, vui lòng đăng nhập lại",
+          description: "Vui lòng đăng nhập lại",
           variant: "destructive"
         });
         navigate('/login');
         return;
       }
 
-      // Giả định validateToken (tương tự Vue)
       const payload = JSON.parse(atob(token.split('.')[1]));
-      const exp = payload.exp * 1000; // Chuyển sang milliseconds
+      const exp = payload.exp * 1000;
       if (Date.now() > exp) {
         toast({
           title: "Phiên hết hạn",
@@ -257,8 +433,7 @@ export const ProductDetailPage = () => {
         return;
       }
 
-      // Prepare cart data similar to Vue
-      const customerId = parseInt(payload.sub, 10); // Lấy từ token
+      const customerId = parseInt(payload.sub, 10);
       const matchedDetail = product?.productDetails.find(
         (p) =>
           p.mauSac?.toLowerCase() === selectedColor.toLowerCase() &&
@@ -285,9 +460,8 @@ export const ProductDetailPage = () => {
         giohangctcombos: [],
       };
 
-      console.log('🛒 Sending cart data:', content); // Debug payload
+      console.log('🛒 Sending cart data:', content);
 
-      // Send request
       const response = await fetch(`${API_URL}/api/Cart`, {
         method: 'POST',
         headers: {
@@ -298,7 +472,7 @@ export const ProductDetailPage = () => {
       });
 
       const result = await response.json();
-      console.log('🔍 Response from server:', result); // Debug response
+      console.log('🔍 Response from server:', result);
 
       if (!response.ok || !result.success) {
         toast({
@@ -315,25 +489,23 @@ export const ProductDetailPage = () => {
           description: `${product?.name} x${quantity} đã được thêm`,
           variant: "default"
         });
-        setQuantity(1); // Reset quantity
+        setQuantity(1);
       }
     } catch (error) {
       console.error('❌ Error in handleAddToCart:', error);
       toast({
         title: "Lỗi không mong muốn",
-        description: error.message || "Có lỗi xảy ra khi thêm sản phẩm",
+        description: error instanceof Error ? error.message : "Có lỗi xảy ra khi thêm sản phẩm",
         variant: "destructive"
       });
     } finally {
       setAddingToCart(false);
-    };
+    }
   };
 
-  // ===== BUY NOW FUNCTION =====
+  // Buy now function
   const handleBuyNow = async () => {
     await handleAddToCart();
-
-    // If successfully added, navigate to cart
     if (!addingToCart) {
       setTimeout(() => {
         navigate('/cart');
@@ -341,7 +513,7 @@ export const ProductDetailPage = () => {
     }
   };
 
-  // ===== TRY-ON FUNCTIONS =====
+  // Try-on functions
   const handleTryOnImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && file.type.startsWith('image/')) {
@@ -364,7 +536,6 @@ export const ProductDetailPage = () => {
     setTryOnError(null);
 
     try {
-      // Mock try-on result
       const productImageUrl = getImageUrl(allImages[currentImage - 1].tenHinhAnh);
       setTimeout(() => {
         setTryOnResult(productImageUrl);
@@ -377,7 +548,7 @@ export const ProductDetailPage = () => {
     }
   };
 
-  // ===== IMAGE CAROUSEL FUNCTIONS =====
+  // Image carousel functions
   const chunkSize = 4;
   const slideChunks = (() => {
     const chunks = [];
@@ -433,7 +604,11 @@ export const ProductDetailPage = () => {
         });
       } catch (error) {
         navigator.clipboard.writeText(window.location.href);
-        alert('Đã copy link sản phẩm vào clipboard!');
+        toast({
+          title: "Đã sao chép",
+          description: "Link sản phẩm đã được sao chép vào clipboard",
+          variant: "default"
+        });
       }
     }
   };
@@ -489,18 +664,52 @@ export const ProductDetailPage = () => {
               <ArrowLeft size={24} />
             </Button>
             <div className="flex items-center space-x-2">
-              <Button variant="ghost" size="icon">
-                <Share size={20} />
-              </Button>
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setIsFavorite(!isFavorite)}
+                onClick={() => navigator.clipboard.writeText(window.location.href).then(() =>
+                  toast({ title: "Đã sao chép", description: "Link sản phẩm đã được sao chép vào clipboard" })
+                )}
               >
-                <Heart size={20} className={isFavorite ? 'fill-red-500 text-red-500' : ''} />
+                <Share size={20} />
               </Button>
+              <button
+                className={`p-2 bg-white/90 rounded-full hover:bg-white transition-all duration-200 z-10 border border-gray-200 shadow-sm ${
+                  isLoading
+                    ? 'opacity-50 cursor-not-allowed'
+                    : 'opacity-100 hover:scale-110 active:scale-95'
+                }`}
+                onClick={handleAddToFavorites}
+                disabled={isLoading}
+                title={isFavorited ? 'Đã thêm vào yêu thích' : 'Thêm vào yêu thích'}
+              >
+                <Heart
+                  size={16}
+                  className={`transition-colors ${
+                    isFavorited
+                      ? 'text-red-500 fill-red-500'
+                      : 'text-gray-600 hover:text-red-500'
+                  }`}
+                />
+              </button>
             </div>
           </div>
+          {/* Favorite status messages */}
+          {error && (
+            <div className="bg-red-100 border border-red-300 text-red-700 px-2 py-1 text-xs text-center animate-fadeIn">
+              {error}
+            </div>
+          )}
+          {isLoading && (
+            <div className="bg-blue-100 border border-blue-300 text-blue-700 px-2 py-1 text-xs text-center animate-fadeIn">
+              Đang thêm vào yêu thích...
+            </div>
+          )}
+          {isFavorited && !isLoading && !error && (
+            <div className="bg-green-100 border border-green-300 text-green-700 px-2 py-1 text-xs text-center animate-fadeIn">
+              ✅ Đã thêm vào yêu thích
+            </div>
+          )}
         </div>
 
         {/* Image Gallery */}
@@ -606,14 +815,15 @@ export const ProductDetailPage = () => {
                 {product.colors.map((color) => (
                   <div
                     key={color.value}
-                    className={`flex items-center space-x-2 p-2 rounded-lg border cursor-pointer ${selectedColor === color.value ? 'border-primary bg-primary/20' : 'border-gray-200'
-                      }`}
+                    className={`flex items-center space-x-2 p-2 rounded-lg border cursor-pointer ${
+                      selectedColor === color.value ? 'border-primary bg-primary/20' : 'border-gray-200'
+                    }`}
                     onClick={() => setSelectedColor(color.value)}
                   >
-                    {/* <div
+                    <div
                       className="w-6 h-6 rounded-full border border-gray-300"
                       style={{ backgroundColor: color.color }}
-                    /> */}
+                    />
                     <span className="text-sm">{color.name}</span>
                   </div>
                 ))}
@@ -675,7 +885,7 @@ export const ProductDetailPage = () => {
         </div>
 
         {/* Reviews and Similar Products */}
-        <ProductReviews productId={parseInt(product.id, 10)} />
+        <ProductReviews productId={parseInt(product.id, 10)} orderDetailId={0} />
         <SimilarProducts />
 
         {/* AI Try-On Dialog */}
@@ -788,7 +998,6 @@ export const ProductDetailPage = () => {
         {/* Bottom Action Bar */}
         <div className="fixed bottom-0 left-1/2 transform -translate-x-1/2 w-full max-w-md bg-white border-t p-4">
           <div className="flex space-x-3">
-            {/* Chat Button */}
             <Button
               variant="outline"
               className="flex-1"
@@ -797,8 +1006,6 @@ export const ProductDetailPage = () => {
               <MessageCircle size={20} className="mr-2" />
               Chat
             </Button>
-
-            {/* Add to Cart Button */}
             <Button
               className="flex-1"
               onClick={handleAddToCart}
@@ -807,8 +1014,6 @@ export const ProductDetailPage = () => {
               <ShoppingCart size={20} className="mr-2" />
               {addingToCart ? 'Đang thêm...' : 'Thêm vào giỏ'}
             </Button>
-
-            {/* Buy Now Button */}
             <Button
               className="flex-1 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
               onClick={handleBuyNow}
@@ -817,14 +1022,11 @@ export const ProductDetailPage = () => {
               {addingToCart ? 'Đang xử lý...' : 'Mua ngay'}
             </Button>
           </div>
-
-          {/* Stock status */}
           {maxQuantity === 'Hết hàng' && (
             <div className="mt-2 text-center text-sm text-red-500">
               ⚠️ Sản phẩm đã hết hàng
             </div>
           )}
-
           {typeof maxQuantity === 'number' && maxQuantity <= 5 && maxQuantity > 0 && (
             <div className="mt-2 text-center text-sm text-orange-500">
               ⚠️ Chỉ còn {maxQuantity} sản phẩm
@@ -835,3 +1037,5 @@ export const ProductDetailPage = () => {
     </MobileLayout>
   );
 };
+
+export default ProductDetailPage;
