@@ -11,8 +11,8 @@ import { Capacitor } from '@capacitor/core';
 // =============================================================================
 const API_CONFIG = {
   // Dev Tunnel public URL (no need for IP anymore)
-  DEV_TUNNEL_URL: 'https://97kbdg93-7218.euw.devtunnels.ms',
-  
+  // DEV_TUNNEL_URL: 'https://97kbdg93-7218.euw.devtunnels.ms',
+  DEV_TUNNEL_URL: 'https://9ddns03l-7218.asse.devtunnels.ms',
   // Local IP configuration (backup for local development)
   LOCAL_IP: '192.168.2.62',
   
@@ -29,11 +29,110 @@ const API_CONFIG = {
   USE_DEV_TUNNEL: true,  // Set to false to use local IP
   
   // Fallback URLs
-  FALLBACK_URLS: [
-    'https://97kbdg93-7218.euw.devtunnels.ms',  // Dev tunnel
+  FALLBACK_URLS: [ 
+       'https://9ddns03l-7218.asse.devtunnels.ms',
+    'https://97kbdg93-7218.euw.devtunnels.ms', 
+ // Dev tunnel
     'http://localhost:7218',                     // Localhost fallback
     'http://192.168.2.62:7218',                 // Local IP
   ]
+};
+
+// =============================================================================
+// AUTHENTICATION HELPER FUNCTIONS
+// =============================================================================
+
+/**
+ * Get authentication token from localStorage
+ * Supports multiple token key formats for compatibility
+ */
+export const getAuthToken = (): string | null => {
+  try {
+    // Try different token key formats that might be used
+    // IMPORTANT: 'accessToken' should be first as it's used in LoginForm
+    const tokenKeys = ['accessToken', 'authToken', 'token', 'jwt', 'bearerToken'];
+    
+    for (const key of tokenKeys) {
+      const token = localStorage.getItem(key);
+      if (token && token.trim() !== '') {
+        console.log(`✅ Found auth token with key: ${key}`);
+        return token;
+      }
+    }
+    
+    console.warn('⚠️ No auth token found in localStorage');
+    console.log('📋 Available localStorage keys:', Object.keys(localStorage));
+    return null;
+  } catch (error) {
+    console.error('❌ Error getting auth token:', error);
+    return null;
+  }
+};
+
+/**
+ * Set authentication token in localStorage
+ * @param token - JWT token to store
+ * @param key - Storage key (default: 'authToken')
+ */
+export const setAuthToken = (token: string, key: string = 'authToken'): void => {
+  try {
+    localStorage.setItem(key, token);
+    console.log(`✅ Auth token stored with key: ${key}`);
+  } catch (error) {
+    console.error('❌ Error storing auth token:', error);
+  }
+};
+
+/**
+ * Remove authentication token from localStorage
+ */
+export const removeAuthToken = (): void => {
+  try {
+    const tokenKeys = ['authToken', 'token', 'accessToken', 'jwt', 'bearerToken'];
+    
+    tokenKeys.forEach(key => {
+      if (localStorage.getItem(key)) {
+        localStorage.removeItem(key);
+        console.log(`🗑️ Removed token with key: ${key}`);
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error removing auth token:', error);
+  }
+};
+
+/**
+ * Check if user is authenticated
+ */
+export const isAuthenticated = (): boolean => {
+  const token = getAuthToken();
+  return token !== null && token.length > 0;
+};
+
+/**
+ * Get customer ID from localStorage
+ */
+export const getCustomerId = (): number | null => {
+  try {
+    const customerIdKeys = ['customerId', 'userId', 'customer_id', 'user_id'];
+    
+    for (const key of customerIdKeys) {
+      const id = localStorage.getItem(key);
+      if (id && id.trim() !== '') {
+        const parsedId = parseInt(id, 10);
+        if (!isNaN(parsedId)) {
+          console.log(`✅ Found customer ID with key: ${key}, value: ${parsedId}`);
+          return parsedId;
+        }
+      }
+    }
+    
+    console.warn('⚠️ No customer ID found in localStorage');
+    return null;
+  } catch (error) {
+    console.error('❌ Error getting customer ID:', error);
+    return null;
+  }
 };
 
 // =============================================================================
@@ -241,6 +340,15 @@ export const getDebugInfo = () => {
       test: getApiEndpoint('/api/test'),
       swagger: `${apiUrl}/swagger/index.html`,
       mobileVnpayCreate: getMobileApiEndpoint('/api/MobileVNPAY/CreatePaymentUrl'),
+    },
+    // Authentication info
+    auth: {
+      hasToken: isAuthenticated(),
+      customerId: getCustomerId(),
+      tokenKeys: ['authToken', 'token', 'accessToken', 'jwt', 'bearerToken'].map(key => ({
+        key,
+        exists: !!localStorage.getItem(key)
+      }))
     }
   };
 };
@@ -264,6 +372,30 @@ export const getSmartApiUrl = (endpoint: string, context?: 'mobile' | 'web' | 'v
   return getApiEndpoint(endpoint);
 };
 
+/**
+ * Create authenticated fetch request with automatic token injection
+ */
+export const authenticatedFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
+  const token = getAuthToken();
+  
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  console.log('🔐 Authenticated fetch to:', url);
+  console.log('🔐 Has token:', !!token);
+  
+  return fetch(url, {
+    ...options,
+    headers,
+  });
+};
+
 // =============================================================================
 // EXPORT DEFAULT
 // =============================================================================
@@ -279,6 +411,12 @@ export default {
   switchApiMode,
   getDebugInfo,
   getSmartApiUrl,
+  getAuthToken,
+  setAuthToken,
+  removeAuthToken,
+  isAuthenticated,
+  getCustomerId,
+  authenticatedFetch,
   config: API_CONFIG
 };
 
@@ -317,5 +455,13 @@ export interface DebugInfo extends PlatformInfo {
     test: string;
     swagger: string;
     mobileVnpayCreate: string;
+  };
+  auth: {
+    hasToken: boolean;
+    customerId: number | null;
+    tokenKeys: Array<{
+      key: string;
+      exists: boolean;
+    }>;
   };
 }

@@ -1,12 +1,13 @@
-// Fixed ProductCard.tsx
-// import React from 'react';
+// Complete Fixed ProductCard.tsx
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Star, Heart, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { getImageUrl } from '../../config/api';
+import { getImageUrl, getApiUrl, getAuthToken } from '../../config/api'; // Import from centralized config
+import { Capacitor } from '@capacitor/core';
 
-// API Product interface from your backend
+// API Product interface from backend
 interface APIProduct {
   maSp: number;
   tenSanPham: string;
@@ -59,7 +60,7 @@ interface Product {
   }>;
 }
 
-// Fixed ShopItemDTO interface (matching your backend)
+// ShopItemDTO interface (matching backend)
 interface ShopItemDTO {
   id: number;
   name: string;
@@ -69,53 +70,24 @@ interface ShopItemDTO {
   discountPercentage?: number | null;
   discountAmount?: number | null;
 }
-
-/**
- * Enhanced getImageUrl with detailed logging
- */
-const getImageUrlWithDebug = (imageName: string, showDebug: boolean = false): string => {
-  if (showDebug) {
-    console.log('🖼️ getImageUrl input:', imageName);
-  }
-  
-  if (!imageName || imageName === 'placeholder.svg') {
-    if (showDebug) console.log('🖼️ Using placeholder for empty/placeholder image');
-    return '/placeholder.svg';
-  }
-  
-  // Check if imageName is already a full URL
-  if (imageName.startsWith('http://') || imageName.startsWith('https://')) {
-    if (showDebug) console.log('🖼️ Image is already full URL:', imageName);
-    return imageName;
-  }
-  
-  // Build the full image URL manually instead of calling getImageUrl to avoid recursion
-  const baseUrl = 'https://localhost:7217'; // Use the web URL directly
-  const fullImageUrl = `${baseUrl}/HinhAnh/Products/${imageName}`;
-  
-  if (showDebug) {
-    console.log('🖼️ Built image URL:', fullImageUrl);
-  }
-  
-  return fullImageUrl;
-};
-
+// Interface for favorite product from API
+interface FavoriteProduct {
+  MaSp: number;
+}
 /**
  * Transform ShopItemDTO to Product
  */
 const transformShopItemToProduct = (shopItem: ShopItemDTO): Product => {
   console.log('🔄 Transforming shop item:', shopItem);
-  
-  // Extract price from priceRange string (format: "100,000 - 200,000")
-  let price = 100000; // Default fallback
+  let price = 100000; 
   if (shopItem.priceRange) {
-    const priceMatch = shopItem.priceRange.match(/[\d,]+/);
+    const priceMatch = shopItem.priceRange.match(/\d+/);
     if (priceMatch) {
-      price = parseInt(priceMatch[0].replace(/,/g, ''));
+      price = parseInt(priceMatch[0]);
     }
   }
   
-  // Generate image name based on product name if no image
+  // Use existing image or generate fallback
   let image = shopItem.image || 'placeholder.svg';
   if (!image || image === '') {
     const nameLower = (shopItem.name || '').toLowerCase();
@@ -151,10 +123,10 @@ const transformShopItemToProduct = (shopItem: ShopItemDTO): Product => {
 };
 
 /**
- * Simple transform: Extract directly from productDetails
+ * Transform APIProduct to Product
  */
 const transformAPIProductToProduct = (apiProduct: APIProduct): Product => {
-  console.log('🔄 Simple transform for product:', apiProduct.maSp, apiProduct.tenSanPham);
+  console.log('🔄 API transform for product:', apiProduct.maSp, apiProduct.tenSanPham);
   
   // Get first productDetail for price and image
   const firstDetail = apiProduct.productDetails?.[0];
@@ -164,7 +136,7 @@ const transformAPIProductToProduct = (apiProduct: APIProduct): Product => {
     return {
       id: apiProduct.maSp,
       name: apiProduct.tenSanPham || 'Unknown Product',
-      price: 100000, // Default fallback
+      price: 100000,
       originalPrice: undefined,
       image: 'placeholder.svg',
       rating: 4.5,
@@ -178,17 +150,14 @@ const transformAPIProductToProduct = (apiProduct: APIProduct): Product => {
     };
   }
   
-  // Extract price directly from first productDetail
+  // Extract price and image from first productDetail
   const price = firstDetail.donGia || 0;
-  console.log('💰 Extracted price from first detail:', price);
-  
-  // Extract image from first productDetail with better logic
   let image = 'placeholder.svg';
+  
   if (firstDetail.images && firstDetail.images.length > 0) {
     const firstImage = firstDetail.images[0];
     if (firstImage && firstImage.tenHinhAnh && firstImage.tenHinhAnh.trim() !== '') {
       image = firstImage.tenHinhAnh;
-      console.log('🖼️ Extracted image from first detail:', image);
     }
   }
   
@@ -235,14 +204,19 @@ const transformAPIProductToProduct = (apiProduct: APIProduct): Product => {
 };
 
 interface ProductCardProps {
-  product: Product | APIProduct | ShopItemDTO; // Accept all formats
-  showDebugInfo?: boolean; // Toggle for debug information
+  product: Product | APIProduct | ShopItemDTO;
+  showDebugInfo?: boolean;
 }
 
 export const ProductCard = ({ product: rawProduct, showDebugInfo = false }: ProductCardProps) => {
   const navigate = useNavigate();
+  const [isFavorited, setIsFavorited] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isFetchingFavorites, setIsFetchingFavorites] = useState(false);
+  // Get consistent API URL
+  const API_URL = getApiUrl();
   
-  // CRITICAL DEBUG: Log what we actually receive
   console.log('🔍 ProductCard received raw product:', rawProduct);
   
   // Transform to standardized Product format
@@ -277,7 +251,7 @@ export const ProductCard = ({ product: rawProduct, showDebugInfo = false }: Prod
     
     // Fix price if it's still 0 or invalid
     if (!product.price || product.price <= 0) {
-      console.warn('⚠️ Invalid price detected, applying emergency fix');
+      console.warn('⚠️ Invalid price detected, applying smart default');
       
       const nameLower = product.name.toLowerCase();
       if (nameLower.includes('áo khoác')) {
@@ -320,7 +294,6 @@ export const ProductCard = ({ product: rawProduct, showDebugInfo = false }: Prod
     console.log('🔧 Created emergency fallback product:', product);
   }
   
-  // Final validation
   console.log('✅ Final product before render:', {
     id: product.id,
     name: product.name,
@@ -328,7 +301,61 @@ export const ProductCard = ({ product: rawProduct, showDebugInfo = false }: Prod
     image: product.image,
     hasValidPrice: product.price > 0
   });
-  
+
+  // Fetch user's favorite products to determine initial isFavorited state
+  useEffect(() => {
+    const fetchFavorites = async () => {
+      const token = getAuthToken();
+      if (!token) {
+        console.log('🔑 No auth token, skipping favorites fetch');
+        return;
+      }
+
+      setIsFetchingFavorites(true);
+      try {
+        const response = await fetch(`${API_URL}/api/Favorite/GetFavoriteProducts`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('❌ Error fetching favorites:', response.status, errorText);
+          return;
+        }
+
+        const result = await response.json();
+        console.log('📦 Favorites API response:', result);
+
+        // Handle different possible response structures
+        let favoriteProducts: FavoriteProduct[] = [];
+        if (result.success && result.data) {
+          favoriteProducts = result.data;
+        } else if (Array.isArray(result)) {
+          favoriteProducts = result;
+        } else if (result.data && Array.isArray(result.data)) {
+          favoriteProducts = result.data;
+        }
+
+        // Check if current product is in favorites
+        const isProductFavorited = favoriteProducts.some(
+          (fav: FavoriteProduct) => fav.MaSp === product.id
+        );
+        setIsFavorited(isProductFavorited);
+        console.log(`❤️ Product ${product.id} is ${isProductFavorited ? 'favorited' : 'not favorited'}`);
+      } catch (err) {
+        console.error('❌ Error fetching favorites:', err);
+        // Don't set error state for UI, just log it
+      } finally {
+        setIsFetchingFavorites(false);
+      }
+    };
+
+    fetchFavorites();
+  }, [product.id, API_URL]);
   const formatPrice = (price: number) => {
     if (!price || price === 0 || isNaN(price)) {
       return 'Liên hệ';
@@ -344,20 +371,128 @@ export const ProductCard = ({ product: rawProduct, showDebugInfo = false }: Prod
     }
   };
 
-  const discountPercent = product.originalPrice 
+  const discountPercent = product.originalPrice
     ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
     : 0;
 
-  // Handle image error with fallback strategy
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     const target = e.currentTarget;
     console.error(`❌ Image failed to load for product ${product.id}`);
     target.src = '/placeholder.svg';
   };
 
-  // Handle image load success
   const handleImageLoad = () => {
     console.log(`✅ Image loaded successfully for product ${product.id}`);
+  };
+
+  const handleAddToFavorites = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    console.log('❤️ FAVORITE BUTTON CLICKED! Product ID:', product.id);
+
+    setIsLoading(true);
+    setError(null);
+
+    const token = getAuthToken();
+    if (!token) {
+      const errorMsg = 'Vui lòng đăng nhập để thêm/xóa sản phẩm yêu thích';
+      console.error('❌ Auth Error:', errorMsg);
+      setError(errorMsg);
+      setIsLoading(false);
+      return;
+    }
+
+    let customerId: number | null = null;
+    try {
+      const tokenParts = token.split('.');
+      if (tokenParts.length === 3) {
+        const payload = JSON.parse(atob(tokenParts[1]));
+        customerId = payload.sub ? parseInt(payload.sub) : null;
+        console.log('👤 Customer ID from JWT sub:', customerId);
+      }
+    } catch (jwtError) {
+      console.error('❌ Error decoding JWT:', jwtError);
+    }
+
+    if (!customerId) {
+      try {
+        const customerIdKeys = ['customerId', 'userId', 'customer_id', 'user_id'];
+        for (const key of customerIdKeys) {
+          const id = localStorage.getItem(key);
+          if (id && id.trim() !== '') {
+            const parsedId = parseInt(id, 10);
+            if (!isNaN(parsedId)) {
+              customerId = parsedId;
+              console.log(`👤 Using backup customer ID from localStorage key: ${key}, value: ${customerId}`);
+              break;
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ Error getting backup customer ID:', error);
+      }
+    }
+
+    try {
+      const payload = customerId
+        ? { MaKh: customerId, MaSp: product.id }
+        : { MaSp: product.id };
+
+      if (isFavorited) {
+        // Remove from favorites
+        const response = await fetch(`${API_URL}/api/Favorite/DeleteFavoriteProducts`, {
+          method: 'DELETE',
+          headers: {
+          'Content-Type': 'application/json',
+        },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('❌ Error removing favorite:', response.status, errorText);
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+
+        console.log('✅ Removed from favorites:', product.id);
+        setIsFavorited(false);
+      } else {
+        // Add to favorites
+        const response = await fetch(`${API_URL}/api/Favorite/AddFavoriteProduct`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('❌ Error adding favorite:', response.status, errorText);
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+
+        console.log('✅ Added to favorites:', product.id);
+        setIsFavorited(true);
+      }
+    } catch (err) {
+      console.error('❌ Error in favorite operation:', err);
+      let errorMessage = isFavorited
+        ? 'Không thể xóa sản phẩm khỏi yêu thích'
+        : 'Không thể thêm sản phẩm vào yêu thích';
+      if (err instanceof Error) {
+        try {
+          const errorObj = JSON.parse(err.message.replace(/^HTTP \d+: /, ''));
+          errorMessage = errorObj.message || errorMessage;
+        } catch {
+          errorMessage = err.message;
+        }
+      }
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+      console.log('🏁 Favorite operation completed');
+    }
   };
 
   return (
@@ -368,14 +503,7 @@ export const ProductCard = ({ product: rawProduct, showDebugInfo = false }: Prod
       <CardContent className="p-3">
         <div className="relative mb-3 group">
           {/* Debug overlay - only show if enabled */}
-          {showDebugInfo && (
-            <div className="absolute top-0 left-0 bg-black/90 text-white text-xs p-2 z-20 rounded max-w-full">
-              <div className="truncate">ID: {product.id}</div>
-              <div className="truncate">IMG: {product.image}</div>
-              <div className="truncate">PRICE: ₫{product.price?.toLocaleString() || 'N/A'}</div>
-              <div className="truncate">TYPE: {('maSp' in rawProduct) ? 'API' : ('type' in rawProduct) ? 'ShopDTO' : 'Direct'}</div>
-            </div>
-          )}
+         
 
           {/* Main product image */}
           <img
@@ -388,15 +516,28 @@ export const ProductCard = ({ product: rawProduct, showDebugInfo = false }: Prod
             style={{ minHeight: '192px', backgroundColor: '#f3f4f6' }}
           />
           
-          {/* Favorite button */}
+          {/* Favorite button with enhanced visibility and debugging */}
           <button 
-            className="absolute top-2 right-2 p-2 bg-white/80 rounded-full hover:bg-white transition-colors z-10 opacity-0 group-hover:opacity-100"
+            className={`absolute top-2 right-2 p-2 bg-white/90 rounded-full hover:bg-white transition-all duration-200 z-10 border border-gray-200 shadow-sm ${
+              isLoading 
+                ? 'opacity-50 cursor-not-allowed' 
+                : 'opacity-100 hover:scale-110 active:scale-95'
+            }`}
             onClick={(e) => {
-              e.stopPropagation();
-              console.log(`💖 Heart clicked for product: ${product.name}`);
+              console.log('🖱️ Favorite button clicked (before handler)');
+              handleAddToFavorites(e);
             }}
+            disabled={isLoading}
+            title={isFavorited ? 'Đã thêm vào yêu thích' : 'Thêm vào yêu thích'}
           >
-            <Heart size={16} className="text-gray-600 hover:text-red-500 transition-colors" />
+            <Heart 
+              size={16} 
+              className={`transition-colors ${
+                isFavorited 
+                  ? 'text-red-500 fill-red-500' 
+                  : 'text-gray-600 hover:text-red-500'
+              }`} 
+            />
           </button>
           
           {/* Product badges */}
@@ -417,6 +558,25 @@ export const ProductCard = ({ product: rawProduct, showDebugInfo = false }: Prod
               <Badge className="bg-gray-500 text-white text-xs">Hết hàng</Badge>
             )}
           </div>
+
+          {/* Show error message or loading state */}
+          {error && (
+            <div className="absolute bottom-2 left-2 right-2 bg-red-100 border border-red-300 text-red-700 px-2 py-1 rounded text-xs z-10 animate-fadeIn">
+              {error}
+            </div>
+          )}
+          
+          {isLoading && (
+            <div className="absolute bottom-2 left-2 right-2 bg-blue-100 border border-blue-300 text-blue-700 px-2 py-1 rounded text-xs z-10 animate-fadeIn">
+              Đang thêm vào yêu thích...
+            </div>
+          )}
+          
+          {isFavorited && !isLoading && !error && (
+            <div className="absolute bottom-2 left-2 right-2 bg-green-100 border border-green-300 text-green-700 px-2 py-1 rounded text-xs z-10 animate-fadeIn">
+              ✅ Đã thêm vào yêu thích
+            </div>
+          )}
         </div>
 
         {/* Product info */}
@@ -463,48 +623,36 @@ export const ProductCard = ({ product: rawProduct, showDebugInfo = false }: Prod
 };
 
 // -------------------------------------------------------------------
-// FIXED PRODUCTGRID COMPONENT
+// FIXED PRODUCTGRID COMPONENT WITH CONSISTENT API USAGE
 // -------------------------------------------------------------------
-
-import React, { useEffect, useState } from 'react';
-import { Capacitor } from '@capacitor/core';
 
 interface ProductGridProps {
   filters: any;
 }
-
-// API URL configuration for mobile and web
-const getApiUrl = () => {
-  const isNative = Capacitor.isNativePlatform();
-  const platform = Capacitor.getPlatform();
-  
-  console.log('ProductGrid Platform info:', { isNative, platform });
-  
-  if (isNative && platform === 'android') {
-    return 'http://192.168.1.150:7218';
-  }
-  
-  return 'https://localhost:7217';
-};
-
-const API_URL = getApiUrl();
 
 export const ProductGrid = ({ filters }: ProductGridProps) => {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Use consistent API URL from config
+  const API_URL = getApiUrl();
+
   useEffect(() => {
-    console.log('ProductGrid API_URL:', API_URL);
-  }, []);
+    console.log('ProductGrid using consistent API_URL:', API_URL);
+    console.log('Platform info:', {
+      isNative: Capacitor.isNativePlatform(),
+      platform: Capacitor.getPlatform()
+    });
+  }, [API_URL]);
 
   useEffect(() => {
     const fetchProducts = async () => {
       try {
         setLoading(true);
         setError(null);
-        console.log('Fetching products from:', API_URL);
-        console.log('Filters:', filters);
+        console.log('🔄 Fetching products from:', API_URL);
+        console.log('🔍 Applied filters:', filters);
 
         const queryParams = new URLSearchParams({
           search: filters.search || '',
@@ -514,7 +662,10 @@ export const ProductGrid = ({ filters }: ProductGridProps) => {
           page: '1',
         });
 
-        const response = await fetch(`${API_URL}/api/Shop?${queryParams}`, {
+        const fullUrl = `${API_URL}/api/Shop?${queryParams}`;
+        console.log('🌐 Full request URL:', fullUrl);
+
+        const response = await fetch(fullUrl, {
           method: 'GET',
           headers: {
             'Accept': 'application/json',
@@ -522,38 +673,44 @@ export const ProductGrid = ({ filters }: ProductGridProps) => {
           },
         });
 
-        console.log('Product grid response status:', response.status);
+        console.log('📡 Response status:', response.status);
+        console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()));
         
         if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+          const errorText = await response.text();
+          console.error('❌ API Error Response:', errorText);
+          throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
         }
 
         const result = await response.json();
-        console.log('Product grid raw result:', result);
+        console.log('📦 Raw API result:', result);
 
-        // Handle the response based on your backend structure
+        // Handle the response based on backend structure
         let productData = [];
         
         if (result.success && result.data) {
           productData = result.data;
+          console.log('✅ Using result.data (success format)');
         } else if (Array.isArray(result)) {
           productData = result;
+          console.log('✅ Using direct array result');
         } else if (result.data && Array.isArray(result.data)) {
           productData = result.data;
+          console.log('✅ Using result.data (direct format)');
         } else {
-          console.warn('Unexpected API response structure:', result);
+          console.warn('⚠️ Unexpected API response structure:', result);
           productData = [];
         }
 
-        console.log('Product data to map:', productData);
+        console.log('📋 Product data to process:', productData);
 
         // Map the data correctly based on ShopItemDTO structure
         const mappedProducts = productData.map((item: any, index: number) => {
-          console.log(`Mapping item ${index}:`, item);
+          console.log(`🔄 Mapping item ${index}:`, item);
           
           // Handle both camelCase and PascalCase properties
           const mappedItem = {
-            id: item.id || item.Id || index,
+            id: item.id || item.Id || index + 1000, // Ensure unique ID
             name: item.name || item.Name || `Sản phẩm ${index + 1}`,
             type: item.type || item.Type || 'Product',
             image: item.image || item.Image || '',
@@ -562,16 +719,16 @@ export const ProductGrid = ({ filters }: ProductGridProps) => {
             discountAmount: item.discountAmount || item.DiscountAmount || null,
           };
           
-          console.log(`Mapped item ${index}:`, mappedItem);
+          console.log(`✅ Mapped item ${index}:`, mappedItem);
           return mappedItem;
         });
         
-        console.log('Final mapped products:', mappedProducts);
+        console.log('🎯 Final mapped products:', mappedProducts);
         setProducts(mappedProducts);
         
       } catch (error) {
-        console.error('Lỗi khi lấy sản phẩm:', error);
-        setError(error instanceof Error ? error.message : 'Có lỗi xảy ra');
+        console.error('❌ Error fetching products:', error);
+        setError(error instanceof Error ? error.message : 'Có lỗi xảy ra khi tải sản phẩm');
         setProducts([]);
       } finally {
         setLoading(false);
@@ -579,7 +736,7 @@ export const ProductGrid = ({ filters }: ProductGridProps) => {
     };
     
     fetchProducts();
-  }, [filters]);
+  }, [filters, API_URL]);
 
   if (loading) {
     return (
@@ -587,6 +744,7 @@ export const ProductGrid = ({ filters }: ProductGridProps) => {
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
           <p className="text-sm text-gray-500">Đang tải sản phẩm...</p>
+          <p className="text-xs text-gray-400 mt-1">API: {API_URL}</p>
         </div>
       </div>
     );
@@ -596,12 +754,13 @@ export const ProductGrid = ({ filters }: ProductGridProps) => {
     return (
       <div className="p-4 flex justify-center items-center min-h-32">
         <div className="text-center">
-          <p className="text-sm text-red-500 mb-2">Lỗi: {error}</p>
+          <p className="text-sm text-red-500 mb-2">❌ Lỗi: {error}</p>
+          <p className="text-xs text-gray-400 mb-3">API: {API_URL}</p>
           <button 
             onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-primary text-white rounded text-sm"
+            className="px-4 py-2 bg-primary text-white rounded text-sm hover:bg-primary/90 transition-colors"
           >
-            Thử lại
+            🔄 Thử lại
           </button>
         </div>
       </div>
@@ -613,16 +772,17 @@ export const ProductGrid = ({ filters }: ProductGridProps) => {
       <div className="grid grid-cols-2 gap-4">
         {products.map((product, index) => (
           <ProductCard 
-            key={product.id || index} 
+            key={`product-${product.id}-${index}`} 
             product={product}
-            // showDebugInfo={process.env.NODE_ENV === 'development'}
+            showDebugInfo={process.env.NODE_ENV === 'development'}
           />
         ))}
       </div>
       
       {products.length === 0 && !loading && (
         <div className="text-center py-8">
-          <p className="text-gray-500">Không tìm thấy sản phẩm nào</p>
+          <p className="text-gray-500 mb-2">🔍 Không tìm thấy sản phẩm nào</p>
+          <p className="text-xs text-gray-400">Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm</p>
         </div>
       )}
     </div>

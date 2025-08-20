@@ -20,7 +20,7 @@ import { LuckyWheelPage } from "./components/LuckyWheel/LuckyWheelPage";
 import { AIChatPage } from "./components/AI/AIChatPage";
 import { AITryOnPage } from "./components/AI/AITryOnPage";
 import { OrdersPage } from "./components/Orders/OrdersPage";
-import { FavoritesPage } from "./components/Favorites/FavoritesPage";
+import FavoritesPage from './components/Favorites/FavoritesPage'; 
 import { SharedCartPage } from "./components/Cart/SharedCartPage";
 import NotFound from "./pages/NotFound";
 import { ComboPage } from "./components/Combo/ComboPage";
